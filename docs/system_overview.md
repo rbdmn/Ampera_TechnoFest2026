@@ -9,10 +9,18 @@
 
 **Ampera AI** (Arti: Gabungan Ampere + Bersama) adalah sistem berbasis AI agent tunggal (single-agent) yang membantu pengelola dan penghuni kos/rusun dalam:
 
-- Memantau konsumsi listrik secara real-time
+- Memantau konsumsi listrik per kamar secara berkala dan terstruktur
 - Membagi tagihan listrik secara proporsional dan transparan
 - Mendeteksi penggunaan anomali dan memberikan notifikasi proaktif
 - Menghasilkan insight hemat energi berbasis pola historis
+
+Dalam konteks implementasi lomba, Ampera AI tidak bergantung pada hardware sensor fisik. Sistem menggunakan dua pendekatan sumber data:
+
+1. **Input manual oleh penghuni untuk data baru**  
+   Penghuni memasukkan angka meteran listrik kamarnya secara berkala, misalnya setiap minggu atau setiap awal/akhir bulan. Sistem menghitung selisih dari pembacaan sebelumnya, lalu agent menganalisis konsumsi tersebut.
+
+2. **Simulasi dataset untuk data lama/dummy**  
+   Data historis disimulasikan dari dataset Open Power System Data yang di-seed ke PostgreSQL. Agent membaca data tersebut seolah-olah data konsumsi masuk otomatis dari sensor. Pendekatan ini paling realistis untuk demo lomba karena fokus penilaian ada pada logika sistem, transparansi tagihan, dan kemampuan AI agent.
 
 ---
 
@@ -30,14 +38,38 @@
 ## 3. Solution Overview
 
 ```
-Sensor/Data → Ampera AI Agent → Dashboard + Notifikasi
+Manual Meter Input + Seeded Dataset → PostgreSQL → Ampera AI Agent → Dashboard + Notifikasi
 ```
 
-- Agent membaca data konsumsi listrik periodik (per jam)
+- Penghuni menginput angka meteran baru secara berkala melalui aplikasi
+- Sistem menghitung konsumsi dari selisih angka meteran saat ini dan angka meteran sebelumnya
+- Dataset historis digunakan untuk mengisi data lama/dummy saat development dan demo
+- Agent membaca data konsumsi dari PostgreSQL, bukan langsung dari hardware sensor
 - Menghitung penggunaan per kamar dan total gedung
 - Mendeteksi pola abnormal, memproyeksikan tagihan akhir bulan
 - Mengirim notifikasi otomatis ke penghuni yang melebihi batas
 - Menghasilkan laporan tagihan siap pakai untuk pengelola
+
+### Data Flow Utama
+
+**Data baru:**
+
+```
+Penghuni input angka meteran → Backend validasi → Hitung selisih kWh → Simpan ke DB → Agent analisis
+```
+
+**Data lama/dummy untuk demo:**
+
+```
+Dataset CSV → Preprocess Pandas → Seed PostgreSQL → Agent baca dari DB → Analisis → Notifikasi
+```
+
+### Batasan Pendekatan
+
+| Pendekatan | Kelebihan | Risiko/Batasan | Mitigasi |
+|---|---|---|---|
+| Input manual penghuni | Murah, tidak butuh hardware, mudah diterapkan di kos/rusun kecil | Rawan telat input atau tidak jujur | Riwayat input, validasi angka tidak boleh turun, deteksi lonjakan tidak wajar, admin dapat verifikasi |
+| Dataset simulasi | Cocok untuk demo lomba, realistis untuk pola historis, tidak butuh sensor | Bukan data live dari gedung asli | Dijelaskan sebagai simulasi data historis untuk membuktikan logika sistem dan AI |
 
 ---
 
@@ -47,11 +79,13 @@ Sensor/Data → Ampera AI Agent → Dashboard + Notifikasi
 
 - Melihat total konsumsi listrik gedung (harian/bulanan)
 - Melihat breakdown penggunaan per kamar
+- Memantau dan memverifikasi riwayat input meteran penghuni
 - Mengunduh laporan tagihan bulanan (PDF/CSV)
 - Mendapat insight: kamar mana yang paling boros, tren penggunaan
 
 ### 🙋 User (Penghuni Kos)
 
+- Menginput angka meteran listrik kamar secara berkala
 - Melihat konsumsi listrik kamar sendiri
 - Melihat estimasi tagihan bulan berjalan
 - Menerima notifikasi jika penggunaan mendekati/melebihi batas
@@ -88,6 +122,12 @@ Sensor/Data → Ampera AI Agent → Dashboard + Notifikasi
 │                    BACKEND LAYER                         │
 │                   FastAPI (Python)                       │
 │   ┌────────────────────────────────────────────────┐    │
+│   │      Manual Meter Reading API                  │    │
+│   │      - input angka meteran                     │    │
+│   │      - validasi pembacaan                      │    │
+│   │      - hitung selisih kWh                      │    │
+│   └──────────────────────┬─────────────────────────┘    │
+│   ┌────────────────────────────────────────────────┐    │
 │   │              Ampera AI Agent                │    │
 │   │              (LangChain)                       │    │
 │   │                                                │    │
@@ -103,10 +143,16 @@ Sensor/Data → Ampera AI Agent → Dashboard + Notifikasi
                            │
              ┌─────────────▼──────────────┐
              │        PostgreSQL           │
+             │  - meter_readings           │
              │  - consumption_logs         │
              │  - rooms / users            │
              │  - billing_records          │
              │  - alert_history            │
+             └────────────────────────────┘
+
+             ┌────────────────────────────┐
+             │ Seeded Historical Dataset  │
+             │ Open Power System Data CSV │
              └────────────────────────────┘
 ```
 
@@ -114,15 +160,15 @@ Sensor/Data → Ampera AI Agent → Dashboard + Notifikasi
 
 ## 7. Agentic Loop Explanation
 
-Agent berjalan dalam loop periodik (setiap jam atau on-demand):
+Agent berjalan secara on-demand dan periodik. Pada implementasi demo, agent dapat dijalankan setelah ada input meteran baru, setelah proses seed dataset selesai, atau melalui scheduler backend.
 
 ```
 ┌──────────┐
-│ OBSERVE  │  ← Baca data konsumsi terbaru dari DB
+│ OBSERVE  │  ← Baca data meteran/konsumsi terbaru dari DB
 └────┬─────┘
      │
 ┌────▼─────┐
-│  THINK   │  ← Bandingkan dengan baseline & threshold
+│  THINK   │  ← Bandingkan dengan baseline historis & threshold
 └────┬─────┘
      │
 ┌────▼─────┐
@@ -156,18 +202,55 @@ Agent berjalan dalam loop periodik (setiap jam atau on-demand):
 
 ## 8. Data Source
 
+Ampera AI menggunakan dua jenis sumber data agar sistem tetap masuk akal untuk produk nyata sekaligus kuat untuk demo lomba.
+
+### 8.1 Data Baru: Input Manual Penghuni
+
+Untuk data konsumsi terbaru, penghuni melakukan input angka meteran listrik kamarnya melalui aplikasi.
+
+**Alur:**
+
+```
+Penghuni buka app → pilih kamar/akun → input angka meteran → submit → backend hitung selisih → simpan consumption log
+```
+
+**Contoh:**
+
+| Tanggal | Angka Meteran | Selisih dari Input Sebelumnya | Konsumsi Dicatat |
+|---|---:|---:|---:|
+| 1 Mei | 1.250,0 kWh | - | baseline awal |
+| 8 Mei | 1.278,5 kWh | 28,5 kWh | 28,5 kWh |
+| 15 Mei | 1.304,2 kWh | 25,7 kWh | 25,7 kWh |
+
+**Validasi minimum:**
+
+- Angka meteran baru tidak boleh lebih kecil dari angka sebelumnya
+- Input harus memiliki timestamp dan identitas kamar/penghuni
+- Jika selisih terlalu besar dibanding pola historis, agent menandai sebagai anomali
+- Admin dapat melihat riwayat input untuk audit sederhana
+
+**Keterbatasan:**
+
+- Tidak real-time karena bergantung pada jadwal input penghuni
+- Ada risiko penghuni telat input atau memasukkan angka tidak jujur
+- Sistem perlu fitur audit/verifikasi admin untuk penggunaan nyata
+
+### 8.2 Data Lama/Dummy: Simulasi Dataset
+
 **Dataset:** [Open Power System Data — Household Data (2020-04-15)](https://data.open-power-system-data.org/household_data/2020-04-15)
 
 | Kegunaan | Detail |
 |---|---|
-| Simulasi konsumsi listrik | Data penggantian sensor per kamar (kWh/jam) |
+| Simulasi konsumsi listrik | Data historis konsumsi listrik yang dipetakan ke kamar kos |
 | Baseline usage | Rata-rata konsumsi rumah tangga sebagai acuan normal |
 | Pattern analysis | Identifikasi jam sibuk, pola harian/mingguan |
+| Demo lomba | Membuktikan agent bisa membaca data, menganalisis pola, dan memicu notifikasi tanpa hardware |
 
 **Cara penggunaan:**
 - Data di-load via Pandas, di-resample ke interval per jam
 - Tiap kolom rumah tangga dipetakan ke 1 kamar kos (simulasi)
 - Digunakan untuk seed database PostgreSQL saat development/demo
+- Setelah masuk DB, agent memperlakukan data ini sebagai riwayat konsumsi historis
 
 ```python
 import pandas as pd
@@ -177,6 +260,18 @@ df_hourly = df.resample("1H").mean()  # Resample ke per jam
 df_room = df_hourly.iloc[:, :10]      # Ambil 10 kolom = 10 kamar
 df_room.columns = [f"room_{i+1}" for i in range(10)]
 ```
+
+### 8.3 Strategi Demo Lomba
+
+Untuk presentasi lomba, alur yang disarankan:
+
+1. Seed database dengan dataset historis agar dashboard dan agent punya data lama.
+2. Tampilkan admin dashboard berisi tren konsumsi per kamar.
+3. Simulasikan penghuni menginput angka meteran baru.
+4. Backend menghitung selisih konsumsi.
+5. Agent membaca perubahan terbaru, membandingkan dengan baseline historis, lalu menghasilkan alert/insight.
+
+Dengan strategi ini, sistem terlihat realistis tanpa perlu memasang sensor fisik.
 
 ---
 
@@ -194,6 +289,23 @@ df_room.columns = [f"room_{i+1}" for i in range(10)]
 }
 ```
 
+### Tabel `meter_readings`
+```json
+{
+  "reading_id": "READ-20240508-R101",
+  "room_id": "R-101",
+  "submitted_by": "budi@email.com",
+  "reading_value_kwh": 1278.5,
+  "previous_reading_value_kwh": 1250.0,
+  "usage_delta_kwh": 28.5,
+  "reading_period_start": "2024-05-01T00:00:00",
+  "reading_period_end": "2024-05-08T00:00:00",
+  "submitted_at": "2024-05-08T08:30:00",
+  "source": "manual_input",
+  "verification_status": "pending"
+}
+```
+
 ### Tabel `consumption_logs`
 ```json
 {
@@ -204,6 +316,13 @@ df_room.columns = [f"room_{i+1}" for i in range(10)]
   "cumulative_kwh_month": 18.6
 }
 ```
+
+Catatan:
+
+- `meter_readings` menyimpan angka meteran mentah yang diinput penghuni.
+- `consumption_logs` menyimpan hasil konsumsi yang sudah dihitung dan siap dianalisis.
+- Untuk dataset simulasi, `source` dapat ditandai sebagai `seed_dataset`.
+- Untuk input penghuni, `source` ditandai sebagai `manual_input`.
 
 ### Tabel `billing_records`
 ```json
@@ -234,6 +353,19 @@ df_room.columns = [f"room_{i+1}" for i in range(10)]
 
 ## 10. Core Logic
 
+### Perhitungan dari Input Meteran Manual
+
+```
+Konsumsi periode ini = angka_meteran_baru - angka_meteran_sebelumnya
+
+Contoh:
+  Meteran sebelumnya = 1.250,0 kWh
+  Meteran baru       = 1.278,5 kWh
+  Konsumsi periode   = 1.278,5 - 1.250,0 = 28,5 kWh
+```
+
+Jika angka meteran baru lebih kecil dari angka sebelumnya, input ditolak karena meteran listrik normalnya bersifat kumulatif.
+
 ### Perhitungan Tagihan
 
 ```
@@ -254,9 +386,11 @@ Jika cumulative_kwh_month >= 0.8 × monthly_limit_kwh
 Jika cumulative_kwh_month >= monthly_limit_kwh
   → Kirim alert: "Batas terlampaui"
 
-Jika kwh_used (per jam) > mean + 2 × std_dev (baseline)
+Jika usage_delta_kwh atau kwh_used > mean + 2 × std_dev (baseline)
   → Flag sebagai anomali, simpan ke log
 ```
+
+Untuk data manual mingguan, baseline dapat dihitung dari rata-rata konsumsi harian/mingguan historis. Untuk data dataset simulasi, baseline dapat dihitung per jam karena data historisnya lebih granular.
 
 ### Estimasi Tagihan Berjalan
 
@@ -272,7 +406,9 @@ Estimasi tagihan  = proyeksi_akhir × tarif_per_kwh
 
 ## 11. Example Workflow
 
-**Skenario:** Penghuni kamar 101 menyalakan AC terus-menerus
+### 11.1 Workflow Demo dengan Dataset
+
+**Skenario:** Dataset historis menunjukkan kamar 101 memiliki konsumsi tidak biasa pada jam tertentu.
 
 ```
 [06:00] Agent OBSERVE  → Baca log jam 05:00–06:00
@@ -297,6 +433,36 @@ Estimasi tagihan  = proyeksi_akhir × tarif_per_kwh
 [07:00] Loop ulang...
 ```
 
+### 11.2 Workflow Data Baru dari Input Manual
+
+**Skenario:** Penghuni kamar 101 menginput angka meteran mingguan.
+
+```
+[08:30] User INPUT     → Budi memasukkan angka meteran R-101:
+                         previous_reading = 1.250,0 kWh
+                         current_reading  = 1.278,5 kWh
+
+[08:30] Backend CHECK  → Validasi angka baru >= angka sebelumnya
+                         Hitung usage_delta = 28,5 kWh
+                         Simpan ke meter_readings dan consumption_logs
+
+[08:31] Agent OBSERVE  → Baca konsumsi terbaru R-101 dari DB
+                         usage_delta_kwh = 28,5 kWh dalam 7 hari
+
+[08:31] Agent THINK    → Bandingkan dengan baseline mingguan kamar 101
+                         baseline = 20 kWh/minggu
+                         28,5 kWh lebih tinggi dari pola normal
+
+[08:31] Agent PLAN     → Hitung proyeksi akhir bulan
+                         Jika pola berlanjut, estimasi melewati batas bulanan
+
+[08:31] Agent ACT      → Buat notifikasi:
+                         "Penggunaan minggu ini lebih tinggi dari biasanya.
+                          Periksa perangkat listrik yang menyala lama."
+
+[08:31] Agent EVALUATE → Alert tersimpan dan muncul di dashboard/notifikasi
+```
+
 ---
 
 ## 12. Output
@@ -311,9 +477,11 @@ Estimasi tagihan  = proyeksi_akhir × tarif_per_kwh
 ### Dashboard Penghuni
 
 - **Gauge** persentase penggunaan vs batas bulanan
-- **Grafik** konsumsi per jam / per hari — Recharts `AreaChart`
-- **Estimasi tagihan** bulan berjalan (diperbarui setiap jam)
+- **Grafik** konsumsi per input / per hari — Recharts `AreaChart`
+- **Estimasi tagihan** bulan berjalan (diperbarui setelah input baru atau proses analisis agent)
 - **Riwayat notifikasi** penggunaan berlebih
+- **Form input meteran** untuk memasukkan angka meteran terbaru
+- **Riwayat input meteran** agar penghuni dan admin dapat melihat catatan sebelumnya
 
 ### Notifikasi (In-App)
 
@@ -348,10 +516,10 @@ Ampera AI bukan sekadar sistem rule-based atau dashboard biasa.
 
 | Aspek | Penjelasan |
 |---|---|
-| **Autonomy** | Agent berjalan mandiri tiap jam tanpa trigger manual |
+| **Autonomy** | Agent dapat berjalan setelah input baru, setelah seed data, atau via scheduler |
 | **Tool Use** | Agent memanggil tools (query DB, analisis, notif) sesuai konteks |
-| **Reasoning** | Agent memutuskan kapan harus alert vs diam berdasarkan konteks data |
-| **Adaptivity** | Agent memperbarui threshold berdasarkan pola historis per kamar |
+| **Reasoning** | Agent memutuskan kapan harus alert vs diam berdasarkan konteks input manual dan data historis |
+| **Adaptivity** | Agent memperbarui threshold berdasarkan pola historis per kamar, baik dari dataset maupun input penghuni |
 | **Goal-directed** | Semua aksi diarahkan pada tujuan: hemat energi & tagihan adil |
 
 > Agent tidak hanya membaca data — ia **mengamati, berpikir, merencanakan, bertindak, dan belajar** dari setiap siklus.
