@@ -1,0 +1,13 @@
+tenant_id,email,full_name,phone,created_at
+TEN-001,budi.santoso@ampera.local,Budi Santoso,+6281200000001,2014-12-11T17:00:00Z
+TEN-002,siti.aminah@ampera.local,Siti Aminah,+6281200000002,2014-12-11T17:00:00Z
+TEN-003,rizky.pratama@ampera.local,Rizky Pratama,+6281200000003,2014-12-11T17:00:00Z
+TEN-004,rizky.pratama.2@ampera.local,Rizky Pratama 2,+6281200000004,2014-12-11T17:00:00Z
+TEN-005,dewi.lestari@ampera.local,Dewi Lestari,+6281200000005,2014-12-11T17:00:00Z
+TEN-006,andi.wijaya@ampera.local,Andi Wijaya,+6281200000006,2014-12-11T17:00:00Z
+TEN-007,maya.putri@ampera.local,Maya Putri,+6281200000007,2014-12-11T17:00:00Z
+TEN-008,fajar.nugroho@ampera.local,Fajar Nugroho,+6281200000008,2014-12-11T17:00:00Z
+TEN-009,fajar.nugroho.2@ampera.local,Fajar Nugroho 2,+6281200000009,2014-12-11T17:00:00Z
+TEN-010,nadia.rahma@ampera.local,Nadia Rahma,+6281200000010,2014-12-11T17:00:00Z
+TEN-011,agus.saputra@ampera.local,Agus Saputra,+6281200000011,2014-12-11T17:00:00Z
+TEN-012,lina.kartika@ampera.local,Lina Kartika,+6281200000012,2014-12-11T17:00:00Z
