@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.agent.prompts import AGENT_SYSTEM_PROMPT
 from app.agent.tools.calculate_bill import calculate_bill
 from app.agent.tools.get_mock_consumption import get_mock_consumption
@@ -72,7 +74,7 @@ def _mock_agent_loop(tariff: float) -> dict[str, object]:
     }
 
 
-def _db_agent_loop(tariff: float) -> dict[str, object]:
+def _db_agent_loop(tariff: float, dry_run: bool = False) -> dict[str, object]:
     """DB-backed observe-think-act loop integrated with the pulled database layer."""
     from app.agent.tools.analyze_pattern import analyze_pattern
     from app.agent.tools.query_consumption import query_consumption
@@ -93,6 +95,7 @@ def _db_agent_loop(tariff: float) -> dict[str, object]:
 
     room_results: list[dict[str, object]] = []
     notification_logs: list[dict[str, str]] = []
+    tools_used: list[str] = ["query_consumption", "analyze_pattern", "calculate_bill"]
     total_latest_kwh = 0.0
     total_estimated_bill = 0.0
 
@@ -117,11 +120,21 @@ def _db_agent_loop(tariff: float) -> dict[str, object]:
                     f"baseline mean={analysis.get('mean_kwh'):.3f}, "
                     f"z={analysis.get('z'):.2f}."
                 )
-                notification = send_notification(
-                    room_id=room_id,
-                    message=message,
-                    alert_type="anomaly",
-                )
+                if dry_run:
+                    notification = {
+                        "status": "dry_run",
+                        "room_id": room_id,
+                        "alert_type": "anomaly",
+                        "message": message,
+                    }
+                else:
+                    notification = send_notification(
+                        room_id=room_id,
+                        message=message,
+                        alert_type="anomaly",
+                    )
+                    if "send_notification" not in tools_used:
+                        tools_used.append("send_notification")
                 notification_logs.append(notification)
 
             room_results.append(
@@ -145,7 +158,9 @@ def _db_agent_loop(tariff: float) -> dict[str, object]:
 
     return {
         "mode": "db",
+        "dry_run": dry_run,
         "flow": ["Observe", "Think", "Plan", "Act", "Evaluate"],
+        "tools_used": tools_used,
         "rooms_checked": len(room_ids),
         "room_results": room_results,
         "total_latest_kwh": round(total_latest_kwh, 4),
@@ -154,7 +169,70 @@ def _db_agent_loop(tariff: float) -> dict[str, object]:
     }
 
 
-def run_ampera_agent(tariff: float | None = None) -> dict[str, object]:
+def build_llm_resolution(agent_result: dict[str, object]) -> dict[str, object]:
+    """Ask Ollama to produce the final operational resolution from DB tool output."""
+    compact_rooms = []
+    for item in agent_result.get("room_results", []):
+        if not isinstance(item, dict):
+            continue
+        analysis = item.get("analysis", {})
+        if not isinstance(analysis, dict):
+            analysis = {}
+        compact_rooms.append(
+            {
+                "room_id": item.get("room_id"),
+                "latest_kwh": item.get("latest_kwh"),
+                "cumulative_kwh_month": item.get("cumulative_kwh_month"),
+                "estimated_bill": item.get("estimated_bill"),
+                "analysis_status": analysis.get("status"),
+                "z_score": analysis.get("z"),
+                "is_anomaly": analysis.get("is_anomaly"),
+                "notification": item.get("notification"),
+            }
+        )
+
+    payload = {
+        "mode": agent_result.get("mode"),
+        "dry_run": agent_result.get("dry_run"),
+        "flow": agent_result.get("flow"),
+        "tools_used": agent_result.get("tools_used"),
+        "rooms_checked": agent_result.get("rooms_checked"),
+        "total_latest_kwh": agent_result.get("total_latest_kwh"),
+        "estimated_bill": agent_result.get("estimated_bill"),
+        "notification_logs": agent_result.get("notification_logs"),
+        "rooms": compact_rooms,
+    }
+    prompt = (
+        f"{AGENT_SYSTEM_PROMPT}\n\n"
+        "You are reviewing the actual database tool output below. "
+        "Return an Indonesian operational resolution for the admin before frontend implementation. "
+        "Be concrete: explain what data was read, which tools ran, what action was or would be executed, "
+        "which rooms need attention, and next recommended admin action.\n\n"
+        f"TOOL_OUTPUT_JSON:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
+    )
+
+    try:
+        response = build_llm().invoke(prompt)
+        content = getattr(response, "content", str(response))
+        return {
+            "status": "ok",
+            "model": get_settings().ollama_model,
+            "resolution": content,
+        }
+    except Exception as exc:
+        return {
+            "status": "error",
+            "model": get_settings().ollama_model,
+            "error": str(exc),
+            "resolution": None,
+        }
+
+
+def run_ampera_agent(
+    tariff: float | None = None,
+    dry_run: bool = False,
+    include_llm_resolution: bool = False,
+) -> dict[str, object]:
     """Run one Ampera agent loop.
 
     The agent keeps the old Ollama foundation while preferring the pulled
@@ -171,15 +249,22 @@ def run_ampera_agent(tariff: float | None = None) -> dict[str, object]:
         pass
 
     if not settings.database_url:
-        return _mock_agent_loop(active_tariff)
+        result = _mock_agent_loop(active_tariff)
+        if include_llm_resolution:
+            result["llm_resolution"] = build_llm_resolution(result)
+        return result
 
     try:
-        return _db_agent_loop(active_tariff)
+        result = _db_agent_loop(active_tariff, dry_run=dry_run)
     except Exception as exc:
         result = _mock_agent_loop(active_tariff)
         result["mode"] = "mock_fallback"
         result["db_error"] = str(exc)
-        return result
+
+    if include_llm_resolution:
+        result["llm_resolution"] = build_llm_resolution(result)
+
+    return result
 
 
 async def chat_with_agent(message: str) -> str:

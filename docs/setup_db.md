@@ -1,3 +1,7 @@
+==========================================================
+SETUP DATABASE POSTGRESQL
+==========================================================
+
 Berikut langkah setup PostgreSQL untuk project ini di Windows.
 
   1. Buat Database
@@ -99,3 +103,13 @@ Berikut langkah setup PostgreSQL untuk project ini di Windows.
   python data\preprocess.py
   python backend\data\seed.py --clear
   python backend\app\agent\test_run.p
+
+==========================================================
+START BACKEND
+==========================================================
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+==========================================================
+START BACKEND
+==========================================================
+npm run dev

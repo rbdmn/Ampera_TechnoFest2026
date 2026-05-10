@@ -1,46 +1,205 @@
 "use client"
 
+import { FormEvent, useEffect, useRef, useState } from "react"
+import ReactMarkdown from "react-markdown"
 import { 
   Bot, 
   Download, 
   Trash2, 
-  Paperclip, 
   SendHorizontal, 
   Lightbulb, 
-  TerminalSquare, 
-  Eye,
   Settings
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
-// Dummy data untuk Suggested Questions
+type Message = {
+  id: number
+  role: "user" | "assistant"
+  content: string
+}
+
+type AgentTool = {
+  name: string
+  description: string
+}
+
 const suggestedQuestions = [
   {
-    title: "Which room is most wasteful?",
-    desc: "Identifies high anomaly consumption zones."
+    title: "Kamar mana yang paling boros?",
+    desc: "Pakai query_consumption dan analyze_pattern."
   },
   {
-    title: "Calculate April total bill",
-    desc: "Generates aggregate financial data for a period."
+    title: "Siapa penghuni kamar 103?",
+    desc: "Pakai query_room_details untuk cek penghuni."
   },
   {
-    title: "Show usage anomalies",
-    desc: "Lists all sensors reporting > 2 standard deviations."
+    title: "Bandingkan kamar 101-105 berdasarkan kWh",
+    desc: "Pakai compare_rooms untuk ranking kamar."
   },
   {
-    title: "Generate end-of-day report",
-    desc: "Compiles summary statistics into a downloadable format."
+    title: "Hitung total tagihan April",
+    desc: "Pakai get_billing_summary dan calculate_bill."
+  },
+  {
+    title: "Tampilkan anomali penggunaan",
+    desc: "Pakai list_anomalies untuk lonjakan pemakaian."
+  },
+  {
+    title: "Buat laporan akhir hari",
+    desc: "Gabungkan konsumsi, tagihan, dan anomali."
+  },
+  {
+    title: "Kirim peringatan untuk kamar yang boros",
+    desc: "Pakai send_notification jika perlu follow-up."
+  },
+  {
+    title: "Berapa estimasi tagihan kamar 101?",
+    desc: "Pakai calculate_bill dari data konsumsi kamar."
   }
 ]
 
+const defaultToolLabels = [
+  "query_consumption",
+  "analyze_pattern",
+  "calculate_bill",
+]
+
+function inferActiveTools(message: string) {
+  const lowered = message.toLowerCase()
+  const tools = new Set(defaultToolLabels)
+
+  if (/(siapa|penghuni|detail|kamar\s*\d{3})/.test(lowered)) {
+    tools.add("query_room_details")
+  }
+
+  if (/(banding|compare|ranking|101-105|per_capita|per orang)/.test(lowered)) {
+    tools.add("compare_rooms")
+  }
+
+  if (/(tagihan|billing|bill|invoice|idr|rupiah|april)/.test(lowered)) {
+    tools.add("get_billing_summary")
+    tools.add("calculate_bill")
+  }
+
+  if (/(anomali|boros|lonjakan|tidak biasa|aneh)/.test(lowered)) {
+    tools.add("list_anomalies")
+    tools.add("analyze_pattern")
+  }
+
+  if (/(peringatan|notifikasi|kirim|ingatkan)/.test(lowered)) {
+    tools.add("send_notification")
+  }
+
+  return Array.from(tools)
+}
+
 export default function AIChatPage() {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [agentTools, setAgentTools] = useState<AgentTool[]>([])
+  const [activeTools, setActiveTools] = useState<string[]>(defaultToolLabels)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchTools() {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+        const response = await fetch(`${baseUrl}/agent/tools`)
+
+        if (!response.ok) {
+          throw new Error(`Tools request failed with status ${response.status}`)
+        }
+
+        const data = (await response.json()) as { tools?: AgentTool[] }
+        if (!cancelled) {
+          setAgentTools(data.tools ?? [])
+        }
+      } catch {
+        if (!cancelled) {
+          setAgentTools([])
+        }
+      }
+    }
+
+    void fetchTools()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
+  }, [messages, loading])
+
+  async function sendMessage(message: string) {
+    const trimmed = message.trim()
+    if (!trimmed || loading) return
+
+    const userMessage: Message = {
+      id: Date.now(),
+      role: "user",
+      content: trimmed,
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+    setInput("")
+    setActiveTools(inferActiveTools(trimmed))
+    setLoading(true)
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+      const response = await fetch(`${baseUrl}/agent/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: trimmed }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Agent request failed with status ${response.status}`)
+      }
+
+      const data = (await response.json()) as { reply?: string }
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          role: "assistant",
+          content: data.reply ?? "No reply returned from Ampera AI.",
+        },
+      ])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to reach Ampera AI."
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          role: "assistant",
+          content: `Request failed: ${message}`,
+        },
+      ])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    void sendMessage(input)
+  }
+
   return (
     // Menggunakan calc(100vh - 110px) agar chatbox menempel di bawah tanpa scrolling halaman utama
-    <div className="flex h-[calc(100vh-110px)] max-w-[1600px] mx-auto gap-6">
+    <div className="flex h-[calc(100vh-110px)] max-w-[1600px] mx-auto gap-6 min-w-0">
       
       {/* LEFT COLUMN: Main Chat Interface */}
-      <Card className="flex-1 flex flex-col bg-white shadow-sm overflow-hidden border-slate-200">
+      <Card className="flex-1 min-w-0 flex flex-col bg-white shadow-sm overflow-hidden border-slate-200">
         
         {/* Chat Header */}
         <div className="flex items-center justify-between p-4 border-b bg-white z-10">
@@ -70,7 +229,7 @@ export default function AIChatPage() {
         </div>
 
         {/* Chat Messages Area (Scrollable) */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
           
           {/* Timestamp */}
           <div className="flex justify-center">
@@ -79,110 +238,65 @@ export default function AIChatPage() {
             </span>
           </div>
 
-          {/* User Message 1 */}
-          <div className="flex flex-col items-end gap-1">
-            <div className="bg-blue-700 text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-[80%] text-sm shadow-sm">
-              Which room is most wasteful in Building A right now?
-            </div>
-            <span className="text-[10px] text-slate-400 font-medium mr-1">Manager</span>
-          </div>
-
-          {/* AI Message 1 (With Tool Execution & Table) */}
-          <div className="flex flex-col items-start gap-2 max-w-[85%]">
-            {/* Tool Execution Indicator */}
-            <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-md font-mono text-[11px]">
-              <Settings className="h-3 w-3 animate-spin-slow" />
-              Executing Tool: <span className="text-blue-700 font-semibold">query_consumption(target="Building A", metric="current_load", rank="desc")</span>
-            </div>
-            
-            {/* AI Response Card */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 w-full">
-              <p className="text-sm text-slate-700 leading-relaxed">
-                Based on the current telemetry data, the HVAC Control Room (Level 2) is showing anomalous high consumption, likely indicating a malfunctioning chiller unit. Here is the current top 3 breakdown:
-              </p>
-              
-              {/* Data Table within Chat */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase">
-                    <tr>
-                      <th className="px-4 py-2 font-semibold">Room</th>
-                      <th className="px-4 py-2 font-semibold text-right">Current Load (kW)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    <tr>
-                      <td className="px-4 py-2.5 font-medium text-slate-900">HVAC Control Room</td>
-                      <td className="px-4 py-2.5 font-bold text-red-600 text-right">142.5</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-2.5 text-slate-600">Server Room Alpha</td>
-                      <td className="px-4 py-2.5 font-medium text-slate-900 text-right">85.2</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-2.5 text-slate-600">Room 304</td>
-                      <td className="px-4 py-2.5 font-medium text-slate-900 text-right">12.1</td>
-                    </tr>
-                  </tbody>
-                </table>
+          {messages.map((message) =>
+            message.role === "user" ? (
+              <div key={message.id} className="flex flex-col items-end gap-1">
+                <div className="bg-blue-700 text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-[80%] text-sm shadow-sm">
+                  {message.content}
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium mr-1">Manager</span>
               </div>
-              
-              <Button variant="outline" size="sm" className="text-xs font-medium bg-slate-50 h-8">
-                <Eye className="h-3.5 w-3.5 mr-1.5" />
-                View Room Details
-              </Button>
-            </div>
-            <span className="text-[10px] text-slate-400 font-medium ml-1">Ampera AI</span>
-          </div>
-
-          {/* User Message 2 */}
-          <div className="flex flex-col items-end gap-1">
-            <div className="bg-blue-700 text-white px-5 py-3 rounded-2xl rounded-tr-sm max-w-[80%] text-sm shadow-sm">
-              Calculate April total bill for Resident Unit 402.
-            </div>
-            <span className="text-[10px] text-slate-400 font-medium mr-1">Manager</span>
-          </div>
-
-          {/* AI Message 2 (With Tool Execution & Highlighted Metric) */}
-          <div className="flex flex-col items-start gap-2 max-w-[85%] pb-4">
-            {/* Tool Execution Indicator */}
-            <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-md font-mono text-[11px]">
-              <Settings className="h-3 w-3" />
-              Executing Tool: <span className="text-blue-700 font-semibold">calculate_invoice(unit="402", period="2024-04")</span>
-            </div>
-            
-            {/* AI Response Card */}
-            <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-5 shadow-sm space-y-3 w-full">
-              <p className="text-sm text-slate-700">
-                The total calculated bill for Unit 402 for the billing period of April 2024 is:
-              </p>
-              <div className="text-3xl font-bold text-blue-700">
-                $128.45
+            ) : (
+              <div key={message.id} className="flex flex-col items-start gap-2 max-w-[95%] sm:max-w-[85%] pb-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 w-full">
+                  <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap [&_strong]:font-bold [&_strong]:text-slate-900 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_p]:my-1">
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                  </div>
+                </div>
+                <span className="text-[10px] text-slate-400 font-medium ml-1">Ampera AI</span>
               </div>
-              <p className="text-xs text-slate-500">
-                This includes 845 kWh of standard usage and applicable grid delivery fees. Would you like me to generate the PDF invoice for dispatch?
-              </p>
+            )
+          )}
+
+          {loading && (
+            <div className="flex flex-col items-start gap-2 max-w-[95%] sm:max-w-[85%] pb-4">
+              <div className="flex flex-wrap items-center gap-2 bg-slate-100 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-md font-mono text-[11px]">
+                <Settings className="h-3 w-3 animate-spin" />
+                <span>Executing Tools:</span>
+                {activeTools.map((tool) => (
+                  <span key={tool} className="text-blue-700 font-semibold">
+                    {tool}
+                  </span>
+                ))}
+              </div>
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 w-full">
+                <p className="text-sm text-slate-700 leading-relaxed">
+                  Analyzing consumption data...
+                </p>
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium ml-1">Ampera AI</span>
             </div>
-            <span className="text-[10px] text-slate-400 font-medium ml-1">Ampera AI</span>
-          </div>
+          )}
+
+          <div ref={messagesEndRef} />
 
         </div>
 
         {/* Chat Input Area */}
         <div className="p-4 bg-white border-t">
-          <div className="relative flex items-center border border-slate-300 rounded-xl bg-slate-50 px-2 py-2 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
-            <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
-              <Paperclip className="h-5 w-5" />
-            </button>
+          <form onSubmit={handleSubmit} className="relative flex items-center border border-slate-300 rounded-xl bg-slate-50 px-2 py-2 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
             <input 
               type="text" 
               placeholder="Ask Ampera AI to analyze data, generate reports, or execute commands..."
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              disabled={loading}
               className="flex-1 bg-transparent border-none outline-none px-3 text-sm text-slate-700 placeholder:text-slate-400"
             />
-            <button className="bg-blue-700 hover:bg-blue-800 text-white p-2.5 rounded-lg transition-colors shadow-sm">
+            <button type="submit" disabled={loading || !input.trim()} className="bg-blue-700 hover:bg-blue-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white p-2.5 rounded-lg transition-colors shadow-sm">
               <SendHorizontal className="h-4 w-4" />
             </button>
-          </div>
+          </form>
           <p className="text-center text-[10px] text-slate-400 mt-3 font-medium">
             Ampera AI can make mistakes. Verify important financial data.
           </p>
@@ -201,10 +315,11 @@ export default function AIChatPage() {
             </CardTitle>
             <p className="text-xs text-slate-500 mt-1">Click an example below to instantly query the system.</p>
           </CardHeader>
-          <CardContent className="pt-4 space-y-3">
+          <CardContent className="pt-4 space-y-3 max-h-[260px] overflow-y-auto pr-2">
             {suggestedQuestions.map((q, idx) => (
               <div 
                 key={idx} 
+                onClick={() => void sendMessage(q.title)}
                 className="p-3 border rounded-lg bg-slate-50/50 hover:bg-blue-50 hover:border-blue-200 cursor-pointer transition-all group"
               >
                 <h4 className="text-xs font-semibold text-slate-800 group-hover:text-blue-700 mb-1">{q.title}</h4>
@@ -222,22 +337,18 @@ export default function AIChatPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-4 space-y-2.5">
-            <div className="flex items-center gap-2 text-xs font-mono text-slate-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Live Sensor Querying
-            </div>
-            <div className="flex items-center gap-2 text-xs font-mono text-slate-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Invoice Calculation
-            </div>
-            <div className="flex items-center gap-2 text-xs font-mono text-slate-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Anomaly Detection
-            </div>
-            <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 border border-slate-400"></span>
-              Auto-Disconnect (Disabled)
-            </div>
+            {agentTools.map((tool) => (
+              <div key={tool.name} className="flex items-center gap-2 text-xs font-mono text-slate-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span title={tool.description}>{tool.name}</span>
+              </div>
+            ))}
+            {agentTools.length === 0 && (
+              <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 border border-slate-400"></span>
+                Loading tools...
+              </div>
+            )}
           </CardContent>
         </Card>
 
