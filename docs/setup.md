@@ -107,9 +107,13 @@ Berikut langkah setup PostgreSQL untuk project ini di Windows.
 ==========================================================
 START BACKEND
 ==========================================================
+Pastiin dah download ollama dan udah download model gpt-oss:120b-cloud
+
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ==========================================================
 START BACKEND
 ==========================================================
+Pastiin dah download next atau node js terbaru
+
 npm run dev
