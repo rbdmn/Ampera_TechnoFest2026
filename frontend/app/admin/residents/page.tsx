@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { 
   Building2, 
@@ -10,10 +11,25 @@ import {
   Plus,
   ChevronDown,
   Filter,
-  MoreHorizontal
+  MoreHorizontal,
+  Search,
+  X
 } from "lucide-react"
+
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose
+} from "@/components/ui/dialog"
 
 // Dummy data sesuai desain
 const roomsData = [
@@ -26,6 +42,68 @@ const roomsData = [
 
 export default function RoomManagementPage() {
   const router = useRouter()
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedFloor, setSelectedFloor] = useState("all")
+  const [selectedStatus, setSelectedStatus] = useState("all")
+  const [isFloorOpen, setIsFloorOpen] = useState(false)
+  const [isStatusOpen, setIsStatusOpen] = useState(false)
+
+  const floorRef = useRef<HTMLDivElement>(null)
+  const statusRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (floorRef.current && !floorRef.current.contains(event.target as Node)) {
+        setIsFloorOpen(false)
+      }
+      if (statusRef.current && !statusRef.current.contains(event.target as Node)) {
+        setIsStatusOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const floorOptions = ["all", "1st Floor", "2nd Floor", "3rd Floor"]
+  const statusOptions = ["all", "Normal", "Warning", "Vacant", "Exceeded"]
+
+  // Filter logic
+  const getFilteredData = () => {
+    let data = [...roomsData]
+
+    // Search filter
+    if (searchTerm) {
+      data = data.filter(room => 
+        room.resident.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        room.id.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+
+    // Floor filter
+    if (selectedFloor !== "all") {
+      data = data.filter(room => room.floor === selectedFloor)
+    }
+
+    // Status filter
+    if (selectedStatus !== "all") {
+      data = data.filter(room => room.status === selectedStatus)
+    }
+
+    return data
+  }
+
+  const filteredData = getFilteredData()
+  const hasActiveFilters = searchTerm !== "" || selectedFloor !== "all" || selectedStatus !== "all"
+
+  const handleClearFilters = () => {
+    setSearchTerm("")
+    setSelectedFloor("all")
+    setSelectedStatus("all")
+    setIsFloorOpen(false)
+    setIsStatusOpen(false)
+  }
 
   // Fungsi untuk render badge status dengan warna dinamis
   const renderStatusBadge = (status: string) => {
@@ -59,10 +137,81 @@ export default function RoomManagementPage() {
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
-          <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Add New Room
-          </Button>
+
+          {/* Dialog / Popup Add New Room */}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm">
+                <Plus className="mr-2 h-4 w-4" />
+                Add New Room
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Add New Room</DialogTitle>
+                <DialogDescription>
+                  Enter the room details below. Fields marked as (Legacy) are optional.
+                </DialogDescription>
+              </DialogHeader>
+              
+              {/* Form Fields menyesuaikan DB Schema */}
+              <div className="grid gap-4 py-4">
+                
+                {/* Baris 1: Room ID & Floor */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="room_id" className="text-xs font-semibold text-slate-700">Room ID <span className="text-red-500">*</span></Label>
+                    <Input id="room_id" placeholder="e.g. 101" className="h-9" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="floor" className="text-xs font-semibold text-slate-700">Floor <span className="text-red-500">*</span></Label>
+                    <Input id="floor" type="number" placeholder="e.g. 1" className="h-9" />
+                  </div>
+                </div>
+
+                {/* Baris 2: Tenant Name & Email (Nullable) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="tenant_name" className="text-xs font-semibold text-slate-700">Tenant Name <span className="text-slate-400 font-normal">(Optional)</span></Label>
+                    <Input id="tenant_name" placeholder="e.g. Jane Doe" className="h-9" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="tenant_email" className="text-xs font-semibold text-slate-700">Tenant Email <span className="text-slate-400 font-normal">(Optional)</span></Label>
+                    <Input id="tenant_email" type="email" placeholder="jane@example.com" className="h-9" />
+                  </div>
+                </div>
+
+                {/* Baris 3: Limits & Tariffs (Float) */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="monthly_limit_kwh" className="text-xs font-semibold text-slate-700">Monthly Limit (kWh) <span className="text-red-500">*</span></Label>
+                    <Input id="monthly_limit_kwh" type="number" step="0.01" placeholder="e.g. 450" className="h-9" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="tariff_per_kwh" className="text-xs font-semibold text-slate-700">Tariff / kWh (IDR) <span className="text-red-500">*</span></Label>
+                    <Input id="tariff_per_kwh" type="number" step="0.01" placeholder="e.g. 1500" className="h-9" />
+                  </div>
+                </div>
+
+                {/* Baris 4: Max Occupants */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="max_occupants" className="text-xs font-semibold text-slate-700">Max Occupants <span className="text-red-500">*</span></Label>
+                    <Input id="max_occupants" type="number" placeholder="e.g. 2" className="h-9" />
+                  </div>
+                </div>
+
+              </div>
+              
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline" className="h-9">Cancel</Button>
+                </DialogClose>
+                <Button type="submit" className="bg-blue-700 hover:bg-blue-800 text-white h-9">Save Room</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
         </div>
       </div>
 
@@ -116,24 +265,83 @@ export default function RoomManagementPage() {
         <CardHeader className="flex flex-col sm:flex-row items-center justify-between border-b pb-4 gap-4">
           <div className="flex items-center gap-3 w-full sm:w-auto">
             {/* Floor Filter */}
-            <Button variant="outline" className="text-slate-700 font-medium h-9 text-sm bg-white">
-              All Floors
-              <ChevronDown className="ml-2 h-4 w-4 text-slate-400" />
-            </Button>
+            <div className="relative" ref={floorRef}>
+              <Button 
+                variant="outline" 
+                className={`text-slate-700 font-medium h-9 text-sm bg-white ${selectedFloor !== "all" ? "bg-blue-50 border-blue-300" : ""}`}
+                onClick={() => setIsFloorOpen(!isFloorOpen)}
+              >
+                {selectedFloor === "all" ? "All Floors" : selectedFloor}
+                <ChevronDown className="ml-2 h-4 w-4 text-slate-400" />
+              </Button>
+              {isFloorOpen && (
+                  <div className="absolute left-0 z-50 mt-2 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                    {floorOptions.map((floor) => (
+                      <button
+                      key={floor}
+                      onClick={() => {
+                        setSelectedFloor(floor)
+                        setIsFloorOpen(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm ${selectedFloor === floor ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {floor === "all" ? "All Floors" : floor}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             
             {/* Status Filter */}
-            <Button variant="outline" className="text-slate-700 font-medium h-9 text-sm bg-white">
-              All Statuses
-              <ChevronDown className="ml-2 h-4 w-4 text-slate-400" />
-            </Button>
+            <div className="relative" ref={statusRef}>
+              <Button 
+                variant="outline" 
+                className={`text-slate-700 font-medium h-9 text-sm bg-white ${selectedStatus !== "all" ? "bg-blue-50 border-blue-300" : ""}`}
+                onClick={() => setIsStatusOpen(!isStatusOpen)}
+              >
+                {selectedStatus === "all" ? "All Statuses" : selectedStatus}
+                <ChevronDown className="ml-2 h-4 w-4 text-slate-400" />
+              </Button>
+              {isStatusOpen && (
+                <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {statusOptions.map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        setSelectedStatus(status)
+                        setIsStatusOpen(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm ${selectedStatus === status ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {status === "all" ? "All Statuses" : status}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Clear Filters Button */}
+            {hasActiveFilters && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleClearFilters}
+                className="text-xs"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Clear
+              </Button>
+            )}
           </div>
 
           {/* Search Input */}
           <div className="relative w-full sm:w-64">
-            <Filter className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Filter residents..." 
+              placeholder="Search residents..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400"
             />
           </div>
@@ -150,41 +358,28 @@ export default function RoomManagementPage() {
                 <th className="px-6 py-4 font-semibold text-right">Monthly kWh</th>
                 <th className="px-6 py-4 font-semibold text-right">Estimated Cost</th>
                 <th className="px-6 py-4 font-semibold text-center">Status</th>
-                <th className="px-6 py-4 font-semibold text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {roomsData.map((room) => (
+              {filteredData.map((room) => (
                 <tr 
                   key={room.id} 
                   onClick={() => router.push(`/admin/residents/${room.id}`)}
                   className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
                 >
-                  {/* Room No (Teks Merah jika Exceeded) */}
                   <td className={`px-6 py-4 font-bold ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-900'}`}>
                     {room.id}
                   </td>
                   <td className="px-6 py-4 text-slate-500 font-medium">{room.floor}</td>
                   <td className="px-6 py-4 font-medium text-slate-900">{room.resident}</td>
-                  
-                  {/* kWh (Teks Merah jika Exceeded) */}
                   <td className={`px-6 py-4 font-medium text-right ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-900'}`}>
                     {room.kwh}
                   </td>
-                  
-                  {/* Cost (Teks Merah jika Exceeded) */}
                   <td className={`px-6 py-4 font-medium text-right ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-600'}`}>
                     {room.cost}
                   </td>
-                  
                   <td className="px-6 py-4 text-center">
                     {renderStatusBadge(room.status)}
-                  </td>
-                  
-                  <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation() /* Mencegah baris terklik saat klik icon aksi */}>
-                    <button className="text-slate-400 hover:text-slate-600 p-1 rounded transition-colors opacity-0 group-hover:opacity-100">
-                      <MoreHorizontal className="h-5 w-5 mx-auto" />
-                    </button>
                   </td>
                 </tr>
               ))}
@@ -194,7 +389,7 @@ export default function RoomManagementPage() {
 
         {/* Pagination */}
         <div className="flex items-center justify-between px-6 py-4 border-t text-sm text-slate-500">
-          <div>Showing 1 to 5 of 142 entries</div>
+          <div>Showing 1 to {filteredData.length} of {filteredData.length} entries</div>
           <div className="flex items-center gap-1">
             <button className="px-3 py-1.5 border rounded text-slate-400 hover:bg-slate-50 bg-white font-medium" disabled>Prev</button>
             <button className="px-3 py-1.5 border rounded bg-blue-600 text-white font-medium">1</button>

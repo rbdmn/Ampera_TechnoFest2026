@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { 
   Building2, 
@@ -16,6 +17,17 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Bar, BarChart, ResponsiveContainer, XAxis, Tooltip, Cell } from "recharts"
 
 // Dummy data untuk grafik Hourly (24 jam)
@@ -43,6 +55,33 @@ export default function RoomDetailPage() {
   const params = useParams()
   // Mengambil ID dari URL (misal: "101" dari /admin/residents/101)
   const roomId = params.id as string
+
+  // State untuk edit limit
+  const [isEditLimitOpen, setIsEditLimitOpen] = useState(false)
+  const [monthlyLimit, setMonthlyLimit] = useState(450)
+  const [newLimit, setNewLimit] = useState("450")
+
+  // Update newLimit ketika modal dibuka
+  useEffect(() => {
+    if (isEditLimitOpen) {
+      setNewLimit(monthlyLimit.toString())
+    }
+  }, [isEditLimitOpen, monthlyLimit])
+
+  // Fungsi untuk handle edit limit
+  const handleEditLimit = () => {
+    const limitValue = parseFloat(newLimit)
+    if (limitValue > 0) {
+      setMonthlyLimit(limitValue)
+      setIsEditLimitOpen(false)
+    }
+  }
+
+  // Fungsi untuk reset form
+  const handleCancelEdit = () => {
+    setNewLimit(monthlyLimit.toString())
+    setIsEditLimitOpen(false)
+  }
 
   // Render badge severity
   const renderSeverityBadge = (severity: string) => {
@@ -72,7 +111,7 @@ export default function RoomDetailPage() {
       {/* Header Info & Actions */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 pb-4 border-b">
         <div>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Floor 3 • Monthly Limit: 450 kWh</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Floor 3 • Monthly Limit: {monthlyLimit} kWh</p>
           <h1 className="text-3xl font-bold text-slate-900 leading-tight">Room {roomId || "304"}</h1>
           <p className="flex items-center text-sm font-medium text-slate-600 mt-1.5">
             <Building2 className="h-4 w-4 mr-2 text-slate-400" />
@@ -80,16 +119,47 @@ export default function RoomDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" className="h-9 text-xs font-medium bg-white text-slate-700 hover:bg-slate-50">
-            Export Data
-          </Button>
-          <Button variant="outline" className="h-9 text-xs font-medium bg-white text-slate-700 hover:bg-slate-50">
-            Transfer Tenant
-          </Button>
-          <Button className="h-9 text-xs font-medium bg-blue-700 hover:bg-blue-800 text-white">
-            <Edit2 className="w-3.5 h-3.5 mr-2" />
-            Edit Limit
-          </Button>
+          <Dialog open={isEditLimitOpen} onOpenChange={setIsEditLimitOpen}>
+            <DialogTrigger asChild>
+              <Button className="h-9 text-xs font-medium bg-blue-700 hover:bg-blue-800 text-white">
+                <Edit2 className="w-3.5 h-3.5 mr-2" />
+                Edit Limit
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Edit Monthly Limit</DialogTitle>
+                <DialogDescription>
+                  Set a new monthly energy consumption limit for this room. This will affect billing calculations and alerts.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="limit" className="text-right">
+                    Limit (kWh)
+                  </Label>
+                  <Input
+                    id="limit"
+                    type="number"
+                    value={newLimit}
+                    onChange={(e) => setNewLimit(e.target.value)}
+                    className="col-span-3"
+                    placeholder="Enter limit in kWh"
+                    min="1"
+                    step="0.1"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                  Cancel
+                </Button>
+                <Button type="submit" onClick={handleEditLimit} className="bg-blue-700 hover:bg-blue-800">
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -143,19 +213,19 @@ export default function RoomDetailPage() {
               </div>
               <CardTitle className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Monthly Limit Status</CardTitle>
             </div>
-            <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded">450 MAX</span>
+            <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-0.5 rounded">{monthlyLimit} MAX</span>
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-3xl font-bold text-slate-900">76</span>
+              <span className="text-3xl font-bold text-slate-900">{Math.round((342.5 / monthlyLimit) * 100)}</span>
               <span className="text-sm font-medium text-slate-500">%</span>
             </div>
             
             {/* Custom Progress Bar */}
             <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden mt-3 mb-1.5">
-              <div className="bg-blue-600 h-full rounded-full" style={{ width: '76%' }}></div>
+              <div className="bg-blue-600 h-full rounded-full" style={{ width: `${Math.min((342.5 / monthlyLimit) * 100, 100)}%` }}></div>
             </div>
-            <p className="text-[10px] text-slate-500 text-right font-medium">107.5 kWh remaining</p>
+            <p className="text-[10px] text-slate-500 text-right font-medium">{Math.max(0, monthlyLimit - 342.5).toFixed(1)} kWh remaining</p>
           </CardContent>
         </Card>
       </div>
@@ -213,9 +283,6 @@ export default function RoomDetailPage() {
       <Card className="bg-white shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
           <CardTitle className="text-sm font-semibold">Alert History</CardTitle>
-          <button className="text-xs font-semibold text-blue-600 hover:underline flex items-center">
-            View All <ArrowRight className="w-3 h-3 ml-1" />
-          </button>
         </CardHeader>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">

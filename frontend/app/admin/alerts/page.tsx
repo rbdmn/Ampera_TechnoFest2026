@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect, useRef } from "react"
 import { 
   AlertCircle, 
   Download, 
@@ -8,7 +9,8 @@ import {
   Mail,
   ChevronDown,
   AlertTriangle,
-  Activity
+  Activity,
+  X
 } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -59,6 +61,90 @@ const alertData = [
 ]
 
 export default function AlertHistoryPage() {
+  const [selectedDateRange, setSelectedDateRange] = useState("Last 7 Days")
+  const [selectedType, setSelectedType] = useState("All Types")
+  const [roomFilter, setRoomFilter] = useState("")
+  const [isDateRangeOpen, setIsDateRangeOpen] = useState(false)
+  const [isTypeOpen, setIsTypeOpen] = useState(false)
+
+  const dateRangeRef = useRef<HTMLDivElement>(null)
+  const typeRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dateRangeRef.current && !dateRangeRef.current.contains(event.target as Node)) {
+        setIsDateRangeOpen(false)
+      }
+      if (typeRef.current && !typeRef.current.contains(event.target as Node)) {
+        setIsTypeOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const dateRangeOptions = ["Last 7 Days", "Last 30 Days", "Last 3 Months", "All Time"]
+  const typeOptions = ["All Types", "Limit Exceeded", "Usage Warning", "Anomaly"]
+
+  // Filter logic
+  const getFilteredData = () => {
+    let data = [...alertData]
+
+    // Room filter
+    if (roomFilter) {
+      data = data.filter(alert => 
+        alert.room.toLowerCase().includes(roomFilter.toLowerCase())
+      )
+    }
+
+    // Type filter
+    if (selectedType !== "All Types") {
+      data = data.filter(alert => alert.type === selectedType)
+    }
+
+    // Date range filter (simplified - in real app would use actual date filtering)
+    if (selectedDateRange !== "All Time") {
+      // For demo purposes, we'll filter based on the timestamp format
+      const now = new Date()
+      let daysBack = 0
+
+      switch (selectedDateRange) {
+        case "Last 7 Days":
+          daysBack = 7
+          break
+        case "Last 30 Days":
+          daysBack = 30
+          break
+        case "Last 3 Months":
+          daysBack = 90
+          break
+      }
+
+      if (daysBack > 0) {
+        const cutoffDate = new Date(now.getTime() - (daysBack * 24 * 60 * 60 * 1000))
+        data = data.filter(alert => {
+          // Parse the timestamp (assuming format "Oct 24, 14:32:01")
+          const alertDate = new Date(`2023-${alert.timestamp}`)
+          return alertDate >= cutoffDate
+        })
+      }
+    }
+
+    return data
+  }
+
+  const filteredData = getFilteredData()
+  const hasActiveFilters = roomFilter !== "" || selectedType !== "All Types" || selectedDateRange !== "Last 7 Days"
+
+  const handleClearFilters = () => {
+    setRoomFilter("")
+    setSelectedType("All Types")
+    setSelectedDateRange("Last 7 Days")
+    setIsDateRangeOpen(false)
+    setIsTypeOpen(false)
+  }
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
       
@@ -86,38 +172,87 @@ export default function AlertHistoryPage() {
         <CardHeader className="flex flex-col sm:flex-row items-center justify-between border-b pb-4 gap-4">
           <div className="flex items-center gap-3 w-full sm:w-auto">
             {/* Date Range Filter */}
-            <div className="flex items-center border rounded-md px-3 py-1.5 bg-white text-sm">
-              <span className="text-slate-500 font-medium mr-2 text-xs uppercase tracking-wider">Date Range</span>
-              <span className="font-medium text-slate-700">Last 7 Days</span>
-              <ChevronDown className="h-4 w-4 ml-2 text-slate-400" />
+            <div className="relative" ref={dateRangeRef}>
+              <Button 
+                variant="outline" 
+                className={`text-slate-700 font-medium h-9 text-sm bg-white border-slate-300 ${selectedDateRange !== "Last 7 Days" ? "bg-blue-50 border-blue-300" : ""}`}
+                onClick={() => setIsDateRangeOpen(!isDateRangeOpen)}
+              >
+                <span className="text-slate-500 font-medium mr-2 text-xs uppercase tracking-wider">Date Range</span>
+                <span className="font-medium text-slate-700">{selectedDateRange}</span>
+                <ChevronDown className="h-4 w-4 ml-2 text-slate-400" />
+              </Button>
+              {isDateRangeOpen && (
+                <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {dateRangeOptions.map((range) => (
+                    <button
+                      key={range}
+                      onClick={() => {
+                        setSelectedDateRange(range)
+                        setIsDateRangeOpen(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm ${selectedDateRange === range ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {range}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Type Filter */}
-            <div className="flex items-center border rounded-md px-3 py-1.5 bg-white text-sm">
-              <span className="text-slate-500 font-medium mr-2 text-xs uppercase tracking-wider">Type</span>
-              <span className="font-medium text-slate-700">All Types</span>
-              <ChevronDown className="h-4 w-4 ml-2 text-slate-400" />
+            <div className="relative" ref={typeRef}>
+              <Button 
+                variant="outline" 
+                className={`text-slate-700 font-medium h-9 text-sm bg-white border-slate-300 ${selectedType !== "All Types" ? "bg-blue-50 border-blue-300" : ""}`}
+                onClick={() => setIsTypeOpen(!isTypeOpen)}
+              >
+                <span className="text-slate-500 font-medium mr-2 text-xs uppercase tracking-wider">Type</span>
+                <span className="font-medium text-slate-700">{selectedType}</span>
+                <ChevronDown className="h-4 w-4 ml-2 text-slate-400" />
+              </Button>
+              {isTypeOpen && (
+                <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                  {typeOptions.map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        setSelectedType(type)
+                        setIsTypeOpen(false)
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm ${selectedType === type ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Room Input */}
-            <div className="flex items-center border rounded-md px-3 py-1.5 bg-white text-sm">
+            <div className="flex items-center border rounded-md px-3 py-1.5 bg-white text-sm border-slate-300">
               <span className="text-slate-500 font-medium mr-2 text-xs uppercase tracking-wider">Room</span>
               <input 
                 type="text" 
                 placeholder="e.g. 402" 
+                value={roomFilter}
+                onChange={(e) => setRoomFilter(e.target.value)}
                 className="w-20 outline-none text-slate-700 placeholder:text-slate-300 font-medium bg-transparent"
               />
             </div>
-          </div>
 
-          <div className="flex items-center gap-4 w-full sm:w-auto justify-end">
-            <button className="text-sm font-semibold text-blue-600 hover:text-blue-800">
-              Mark All Read
-            </button>
-            <Button variant="outline" className="h-9 text-sm font-medium text-slate-700 bg-slate-50">
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
+            {/* Clear Filters Button */}
+            {hasActiveFilters && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleClearFilters}
+                className="text-xs"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Clear
+              </Button>
+            )}
           </div>
         </CardHeader>
 
@@ -131,11 +266,10 @@ export default function AlertHistoryPage() {
                 <th className="px-6 py-4 font-semibold">Room</th>
                 <th className="px-6 py-4 font-semibold">Alert Type</th>
                 <th className="px-6 py-4 font-semibold">Message</th>
-                <th className="px-6 py-4 font-semibold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {alertData.map((alert) => (
+              {filteredData.map((alert) => (
                 <tr 
                   key={alert.id} 
                   className={`hover:bg-slate-50 transition-colors ${alert.status !== 'read' ? 'bg-white' : 'bg-slate-50/30'}`}
@@ -189,21 +323,6 @@ export default function AlertHistoryPage() {
                   <td className="px-6 py-4 text-slate-600 text-xs leading-relaxed max-w-md">
                     {alert.message}
                   </td>
-                  
-                  {/* Actions */}
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-2">
-                      {alert.status !== 'read' ? (
-                        <button className="text-blue-600 hover:bg-blue-50 p-1.5 rounded-md transition-colors" title="Mark as read">
-                          <Check className="h-4 w-4" />
-                        </button>
-                      ) : (
-                        <button className="text-slate-400 hover:bg-slate-100 p-1.5 rounded-md transition-colors" title="View details">
-                          <Eye className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -212,7 +331,7 @@ export default function AlertHistoryPage() {
 
         {/* Pagination */}
         <div className="flex items-center justify-between px-6 py-4 border-t text-sm text-slate-500">
-          <div>Showing 1-5 of 124 alerts</div>
+          <div>Showing 1-{filteredData.length} of {filteredData.length} alerts</div>
           <div className="flex items-center gap-1">
             <button className="px-2 py-1 border rounded text-slate-400 hover:bg-slate-50" disabled>&lt;</button>
             <button className="px-3 py-1 border rounded bg-blue-600 text-white font-medium">1</button>

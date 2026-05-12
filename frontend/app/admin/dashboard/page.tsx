@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Zap, Banknote, Building2, AlertTriangle, AlertCircle, Info, Lightbulb, MoreHorizontal, Bot } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Bar, BarChart, ResponsiveContainer, XAxis, Tooltip } from "recharts"
@@ -156,9 +157,13 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <button className="w-full text-xs font-medium border rounded-md py-2 text-slate-700 hover:bg-slate-50 mt-4">
-              View All Rooms
-            </button>
+            {/* Update: Button diubah menjadi Link */}
+    <Link 
+      href="/admin/residents" 
+      className="block w-full text-center text-xs font-medium border rounded-md py-2 text-slate-700 hover:bg-slate-50 mt-4 transition-colors"
+    >
+      View All Rooms
+    </Link>
           </CardContent>
         </Card>
       </div>
@@ -169,9 +174,6 @@ export default function AdminDashboardPage() {
         <Card className="md:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
             <CardTitle className="text-base font-semibold">Quick Room Status</CardTitle>
-            <button className="text-slate-400 hover:text-slate-600">
-              <MoreHorizontal className="h-5 w-5" />
-            </button>
           </CardHeader>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -266,10 +268,6 @@ export default function AdminDashboardPage() {
                 <p className="text-[10px] text-slate-400 mt-1 uppercase font-medium">2 DAYS AGO</p>
               </div>
             </div>
-
-            <button className="w-full text-xs font-semibold text-blue-600 mt-2 flex items-center justify-center gap-1 hover:underline">
-              View All Alerts & Insights &rarr;
-            </button>
           </CardContent>
         </Card>
       </div>

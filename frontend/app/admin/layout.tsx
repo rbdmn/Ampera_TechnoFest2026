@@ -32,12 +32,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <aside className="w-64 border-r bg-white flex flex-col fixed inset-y-0 z-50">
         {/* Logo Area */}
         <div className="flex items-center gap-2 px-6 h-16 border-b">
-          <div className="flex items-center justify-center bg-blue-700 text-white rounded p-1">
-            <Activity className="h-5 w-5" />
-          </div>
           <div>
-            <h1 className="font-bold text-blue-700 text-lg leading-tight">Ampera AI</h1>
-            <p className="text-[10px] text-slate-500 font-medium">Management Console</p>
+            <img src="/logo_text.svg" alt="Ampera Logo" className="h-8 w-auto" />
           </div>
         </div>
 
@@ -141,6 +137,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Bell className="h-5 w-5" />
               <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 border border-white"></span>
             </button>
+            Admin
             <Avatar className="h-8 w-8">
               <AvatarImage src="https://github.com/shadcn.png" />
               <AvatarFallback>AD</AvatarFallback>

@@ -1,6 +1,7 @@
 "use client"
 
 import { FormEvent, useEffect, useRef, useState } from "react"
+// @ts-ignore
 import ReactMarkdown from "react-markdown"
 import { 
   Bot, 
@@ -217,14 +218,6 @@ export default function AIChatPage() {
                 <span className="text-[11px] font-medium text-slate-500">System connected. Ready to analyze data.</span>
               </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-600">
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 hover:bg-red-50">
-              <Trash2 className="h-4 w-4" />
-            </Button>
           </div>
         </div>
 
