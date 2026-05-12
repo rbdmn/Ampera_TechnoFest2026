@@ -1,17 +1,29 @@
 "use client"
 
+import { useState } from "react"
 import { 
   Download, 
   FileText, 
   CreditCard, 
-  Clock, 
+  Check,
   CheckCircle2, 
   AlertCircle,
-  ChevronRight,
   Receipt
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose
+} from "@/components/ui/dialog"
 
 // Fungsi format Rupiah
 const formatIDR = (value: number) => {
@@ -32,8 +44,25 @@ const billingHistory = [
 ]
 
 export default function UserBillingPage() {
+  const [showPayDialog, setShowPayDialog] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<"qris" | "bsi">("qris")
+  const [proofFile, setProofFile] = useState<File | null>(null)
+  const [currentStatus, setCurrentStatus] = useState<"UNPAID" | "Pending Approval" | "PAID">("UNPAID")
+  const amountDue = 480000
+
+  const handleProofChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null
+    setProofFile(file)
+  }
+
+  const handleSubmitPayment = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setCurrentStatus("Pending Approval")
+    setShowPayDialog(false)
+  }
+
   return (
-    <div className="space-y-6 max-w-[1200px] mx-auto">
+    <div className="space-y-6 max-w-[1400px] mx-auto">
       
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -43,7 +72,6 @@ export default function UserBillingPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
         {/* LELFT COLUMN: Current Outstanding Bill (Takes 2/3 width) */}
         <div className="xl:col-span-2 space-y-6">
@@ -60,9 +88,9 @@ export default function UserBillingPage() {
                   </CardTitle>
                   <p className="text-sm text-slate-500 mt-1">Billing Period: Oct 01 - Oct 31, 2023</p>
                 </div>
-                <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full bg-red-50 text-red-600 border border-red-200">
+                <span className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full border ${currentStatus === "UNPAID" ? "bg-red-50 text-red-600 border-red-200" : currentStatus === "Pending Approval" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-600 border-emerald-200"}`}>
                   <AlertCircle className="h-3.5 w-3.5" />
-                  UNPAID
+                  {currentStatus}
                 </span>
               </div>
             </CardHeader>
@@ -72,7 +100,7 @@ export default function UserBillingPage() {
                 {/* Detail Penggunaan */}
                 <div className="space-y-1">
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Amount Due</p>
-                  <div className="text-4xl font-bold text-slate-900">{formatIDR(480000)}</div>
+                  <div className="text-4xl font-bold text-slate-900">{formatIDR(amountDue)}</div>
                   <p className="text-sm font-medium text-slate-500 mt-2">
                     Based on <span className="font-bold text-slate-700">320 kWh</span> usage
                   </p>
@@ -84,15 +112,117 @@ export default function UserBillingPage() {
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Due Date</p>
                     <p className="text-lg font-bold text-red-600">Nov 05, 2023</p>
                   </div>
+                  {currentStatus === "Pending Approval" && (
+                    <p className="text-sm text-amber-700">Bukti pembayaran telah dikirim. Menunggu persetujuan admin.</p>
+                  )}
                   <div className="flex w-full md:w-auto gap-3">
-                    <Button variant="outline" className="flex-1 md:flex-none text-slate-700 bg-white">
-                      <Download className="h-4 w-4 mr-2" />
-                      PDF
+                    <Button variant="outline" className="flex-1 md:flex-none text-slate-700 bg-white" asChild>
+                      <a href="#" download className="flex items-center justify-center gap-2">
+                        <Download className="h-4 w-4" />
+                        PDF
+                      </a>
                     </Button>
-                    <Button className="flex-1 md:flex-none bg-blue-700 hover:bg-blue-800 text-white shadow-sm">
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Pay Now
-                    </Button>
+                    <Dialog open={showPayDialog} onOpenChange={setShowPayDialog}>
+                      <DialogTrigger asChild>
+                        <Button className="flex-1 md:flex-none bg-blue-700 hover:bg-blue-800 text-white shadow-sm">
+                          <CreditCard className="h-4 w-4 mr-2" />
+                          Pay Now
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[520px]">
+                        <DialogHeader>
+                          <DialogTitle>Bayar Invoice</DialogTitle>
+                          <DialogDescription>
+                            Lengkapi data pembayaran untuk mengajukan bukti. Status akan berubah menjadi Pending Approval.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <form className="space-y-6" onSubmit={handleSubmitPayment}>
+                          <div className="grid gap-4">
+                            <div className="grid gap-2">
+                              <Label htmlFor="paymentAmount">Jumlah yang harus dibayar</Label>
+                              <Input id="paymentAmount" value={formatIDR(amountDue)} disabled />
+                            </div>
+
+                            <div className="grid gap-2">
+                              <Label>Metode Pembayaran</Label>
+                              <div className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setPaymentMethod("qris")}
+                                  className={`w-full rounded-lg border px-4 py-3 text-left transition ${paymentMethod === "qris" ? "border-blue-600 bg-white" : "border-transparent bg-slate-100 hover:bg-slate-200"}`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <p className="font-semibold text-slate-900">QRIS</p>
+                                      <p className="text-sm text-slate-500">Scan QR code untuk membayar</p>
+                                    </div>
+                                    {paymentMethod === "qris" && <Check className="h-4 w-4 text-blue-600" />}
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPaymentMethod("bsi")}
+                                  className={`w-full rounded-lg border px-4 py-3 text-left transition ${paymentMethod === "bsi" ? "border-blue-600 bg-white" : "border-transparent bg-slate-100 hover:bg-slate-200"}`}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <p className="font-semibold text-slate-900">BSI</p>
+                                      <p className="text-sm text-slate-500">Transfer ke nomor rekening BSI</p>
+                                    </div>
+                                    {paymentMethod === "bsi" && <Check className="h-4 w-4 text-blue-600" />}
+                                  </div>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-2">
+                              <Label>Bukti Pembayaran</Label>
+                              <input
+                                id="paymentProof"
+                                type="file"
+                                accept="image/*,application/pdf"
+                                onChange={handleProofChange}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                              />
+                              {proofFile && (
+                                <p className="text-sm text-slate-500">Selected file: {proofFile.name}</p>
+                              )}
+                            </div>
+
+                            <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              {paymentMethod === "qris" ? (
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">QRIS Payment</p>
+                                  <p className="text-sm text-slate-500">Scan the QR code with your banking app and upload the receipt.</p>
+                                  <div className="mt-3 h-[180px] rounded-xl border border-dashed border-slate-300 bg-white flex items-center justify-center text-slate-400">
+                                    QR code preview
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">BSI Account</p>
+                                  <p className="text-sm text-slate-500">Gunakan nomor rekening berikut untuk mentransfer:</p>
+                                  <div className="mt-3 rounded-xl bg-white p-4 border border-slate-200">
+                                    <p className="text-sm text-slate-500">Bank Syariah Indonesia (BSI)</p>
+                                    <p className="mt-2 text-lg font-semibold text-slate-900">123-456-7890</p>
+                                    <p className="text-sm text-slate-500 mt-1">A.n. PT Ampera TechnoFest</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <DialogFooter className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+                            <DialogClose asChild>
+                              <Button variant="outline" className="w-full sm:w-auto">Batal</Button>
+                            </DialogClose>
+                            <Button type="submit" className="w-full sm:w-auto bg-blue-700 text-white hover:bg-blue-800">
+                              Submit Bukti
+                            </Button>
+                          </DialogFooter>
+                        </form>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </div>
 
@@ -152,58 +282,6 @@ export default function UserBillingPage() {
             </div>
           </Card>
         </div>
-
-        {/* RIGHT COLUMN: Payment Methods & Info */}
-        <div className="space-y-6">
-          
-          {/* Supported Payment Methods */}
-          <Card className="bg-white shadow-sm">
-            <CardHeader className="border-b pb-4">
-              <CardTitle className="text-base font-semibold">Payment Methods</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-4">
-              <div className="flex items-center gap-3 p-3 border rounded-lg hover:border-blue-300 transition-colors cursor-pointer">
-                <div className="bg-blue-50 p-2 rounded-md text-blue-600">
-                  <CreditCard className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900">Bank Transfer / VA</h4>
-                  <p className="text-xs text-slate-500">BCA, Mandiri, BNI, BRI</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 border rounded-lg hover:border-blue-300 transition-colors cursor-pointer">
-                <div className="bg-emerald-50 p-2 rounded-md text-emerald-600">
-                  <CreditCard className="h-5 w-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900">E-Wallet</h4>
-                  <p className="text-xs text-slate-500">GoPay, OVO, Dana, ShopeePay</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Billing Support / Info */}
-          <Card className="bg-blue-50/50 border-blue-100 shadow-sm">
-            <CardContent className="pt-6">
-              <div className="flex gap-3">
-                <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900">Need Help?</h4>
-                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
-                    If you notice any discrepancies in your usage or have questions about this invoice, please contact the building management or ask Ampera AI for an explanation of your usage spikes.
-                  </p>
-                  <Button variant="link" className="px-0 text-blue-700 h-auto font-semibold mt-2 text-xs">
-                    Contact Support &rarr;
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-        </div>
-      </div>
     </div>
   )
 }

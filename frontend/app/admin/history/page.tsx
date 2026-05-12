@@ -133,10 +133,12 @@ export default function EnergyMonitoringPage() {
   const handleClearFilters = () => {
     setSortBy(null)
     setFilterStatus("all")
+    setDateRange("30")
     setIsFilterOpen(false)
+    setIsDateFilterOpen(false)
   }
 
-  const hasActiveFilters = sortBy !== null || filterStatus !== "all"
+  const hasActiveFilters = sortBy !== null || filterStatus !== "all" || dateRange !== "30"
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
@@ -338,7 +340,7 @@ export default function EnergyMonitoringPage() {
                 Filter
                 {hasActiveFilters && (
                   <span className="ml-1 px-2 py-0.5 text-xs font-bold bg-blue-600 text-white rounded-full">
-                    {(sortBy ? 1 : 0) + (filterStatus !== "all" ? 1 : 0)}
+                    {(sortBy ? 1 : 0) + (filterStatus !== "all" ? 1 : 0) + (dateRange !== "30" ? 1 : 0)}
                   </span>
                 )}
               </Button>
@@ -430,6 +432,7 @@ export default function EnergyMonitoringPage() {
         {hasActiveFilters && (
           <div className="px-6 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between text-xs">
             <span className="text-blue-900 font-medium">
+              {dateRange !== "30" && `${getDateRangeLabel()} • `}
               {sortBy && `Sorted by: ${sortBy === "date" ? "Newest Date" : sortBy === "consumption" ? "Highest Consumption" : "Highest Peak Demand"}`}
               {sortBy && filterStatus !== "all" && " • "}
               {filterStatus !== "all" && `${filterStatus === "normal" ? "Normal" : "Warning"} Status`}

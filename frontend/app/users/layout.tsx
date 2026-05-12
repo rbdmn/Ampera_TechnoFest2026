@@ -6,6 +6,7 @@ import {
   LayoutDashboard, 
   Activity, 
   FileText, 
+  MessageSquare,
   Bot, 
   HelpCircle, 
   LogOut, 
@@ -29,12 +30,8 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
       <aside className="w-64 border-r bg-white flex flex-col fixed inset-y-0 z-50">
         {/* Logo Area */}
         <div className="flex items-center gap-2 px-6 h-16 border-b">
-          <div className="flex items-center justify-center bg-blue-700 text-white rounded p-1">
-            <Activity className="h-5 w-5" />
-          </div>
           <div>
-            <h1 className="font-bold text-blue-700 text-lg leading-tight">Ampera AI</h1>
-            <p className="text-[10px] text-slate-500 font-medium">Resident Portal</p>
+            <img src="/logo_text.svg" alt="Ampera Logo" className="h-8 w-auto" />
           </div>
         </div>
 
@@ -76,6 +73,18 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
             Billing & Invoices
           </Link>
 
+          <Link 
+            href="/users/feedback" 
+            className={`flex items-center gap-3 px-3 py-2 rounded-md font-medium text-sm transition-colors ${
+              isActive('/users/feedback') 
+                ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700' 
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <MessageSquare className="h-4 w-4" />
+            Admin Feedback
+          </Link>
+
           {/* Menu Baru: Notifications */}
           <Link 
             href="/users/notifications" 
@@ -93,7 +102,7 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
         {/* Bottom Actions */}
         <div className="p-4 border-t space-y-2">
           {/* Tombol AI Agent dengan Active State */}
-          <Button
+          {/* <Button
             asChild
             className={`w-full justify-start gap-2 h-11 rounded-xl shadow-md transition-all ${
               isActive('/users/chat') 
@@ -105,7 +114,7 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
               <Bot className="h-4 w-4" />
               <span>Inquire AI Agent</span>
             </Link>
-          </Button>
+          </Button> */}
 
           <button className="flex items-center gap-3 px-3 py-2 w-full text-slate-600 hover:bg-slate-50 rounded-md font-medium text-sm transition-colors mt-2">
             <HelpCircle className="h-4 w-4" />
@@ -124,23 +133,18 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
         <header className="h-16 border-b bg-white flex items-center justify-end px-6 sticky top-0 z-40">
           <div className="flex items-center gap-4">
             
-            {/* Lonceng Topbar diubah menjadi Link & diberi Active State */}
+            {/* Profil User: Bisa diklik & mengarah ke /users/profile */}
             <Link 
-              href="/users/notifications" 
-              className={`relative p-2 rounded-full transition-colors ${
-                isActive('/users/notifications') 
-                  ? 'bg-blue-50 text-blue-700' 
-                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
-              }`}
+              href="/users/profile" 
+              className="flex items-center gap-3 p-1.5 pr-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer border border-transparent hover:border-slate-200"
             >
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 border border-white"></span>
+              <Avatar className="h-8 w-8">
+                <AvatarImage src="https://github.com/shadcn.png" />
+                <AvatarFallback>JD</AvatarFallback>
+              </Avatar>
+              <span className="text-sm font-semibold text-slate-700 mr-1">Jane Doe</span>
             </Link>
 
-            <Avatar className="h-8 w-8">
-              <AvatarImage src="https://github.com/shadcn.png" />
-              <AvatarFallback>U</AvatarFallback>
-            </Avatar>
           </div>
         </header>
 

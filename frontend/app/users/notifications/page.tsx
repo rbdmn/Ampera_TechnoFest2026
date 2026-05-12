@@ -33,7 +33,7 @@ const initialNotifications = [
     isUnread: true,
     icon: Lightbulb,
     color: "blue",
-    actionText: "View AI Analysis"
+    actionText: null
   },
   {
     id: 3,
@@ -90,10 +90,10 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6 max-w-[1400px] mx-auto">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b pb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b pb-6 w-full">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Notifications</h1>
           <p className="text-sm text-slate-500 mt-1">Your latest alerts, insights, and system updates.</p>
@@ -174,14 +174,6 @@ export default function NotificationsPage() {
           )
         })}
       </div>
-
-      {/* Load More Button */}
-      <div className="flex justify-center pt-4 pb-10">
-        <Button variant="outline" className="text-slate-600 font-medium bg-white">
-          Load Older Notifications
-        </Button>
-      </div>
-
     </div>
   )
 }

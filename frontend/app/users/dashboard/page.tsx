@@ -9,8 +9,10 @@ import {
   Clock, 
   AlertTriangle, 
   Info,
-  BarChart3
+  BarChart3,
 } from "lucide-react"
+
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { 
@@ -41,7 +43,7 @@ const limitData = [
 
 export default function UserDashboardPage() {
   return (
-    <div className="space-y-6 max-w-[1200px]">
+    <div className="space-y-6 max-w-[1400px] mx-auto">
       
       {/* Header */}
       <div>
@@ -285,9 +287,12 @@ export default function UserDashboardPage() {
             </div>
 
             <div className="mt-auto pt-2">
-              <button className="w-full text-[10px] font-bold text-blue-700 uppercase tracking-wider hover:underline py-2">
+              <Link 
+                href="/users/notifications" 
+                className="block text-center w-full text-[10px] font-bold text-blue-700 uppercase tracking-wider hover:underline py-2"
+              >
                 View All Alerts
-              </button>
+              </Link>
             </div>
           </CardContent>
         </Card>

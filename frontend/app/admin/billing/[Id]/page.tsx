@@ -135,7 +135,7 @@ export default function RoomBillingDetailsPage({ params }: { params: { Id: strin
   }
 
   return (
-    <div className="space-y-6 max-w-[1200px] mx-auto py-6">
+    <div className="space-y-6 max-w-[1400px] mx-auto">
       <div className="flex items-center gap-3 text-sm text-slate-600">
         <Link href="/admin/billing" className="inline-flex items-center gap-2 text-blue-700 hover:text-blue-900">
           <ArrowLeft className="h-4 w-4" />
