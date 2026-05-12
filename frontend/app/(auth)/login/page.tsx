@@ -1,22 +1,61 @@
+"use client"
+
 import Link from "next/link"
-import { Zap, Mail, Lock } from "lucide-react"
+import { Mail, Lock } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
+import { useState } from "react"
+
+import { apiFetch } from "@/lib/api"
+import { setAuth } from "@/lib/auth"
 
 export default function LoginPage() {
+  const router = useRouter()
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    try {
+      const res = await apiFetch("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      })
+
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(data?.detail || "Login failed")
+        return
+      }
+
+      setAuth(data.access_token, data.role)
+      if (data.role === "admin") router.push("/admin/dashboard")
+      else router.push("/user/dashboard")
+    } catch {
+      setError("Network error")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen w-full bg-slate-50">
       {/* Sisi Kiri - Gambar / Branding (Sembunyi di mobile) */}
-     <div className="hidden lg:block relative w-1/2 h-screen overflow-hidden bg-slate-900">
-  
+      <div className="hidden lg:block relative w-1/2 h-screen overflow-hidden bg-slate-900">
         {/* Background */}
         <div
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: "url('/ampera-bg.jpg')" }}
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: "url('/ampera-bg.jpg')" }}
         />
 
         {/* Overlay */}
@@ -24,30 +63,29 @@ export default function LoginPage() {
 
         {/* Logo Besar */}
         <div className="absolute inset-0 flex items-center justify-center">
-            <Image
+          <Image
             src="/logo_white.svg"
             alt="Ampera Logo"
             width={900}
             height={900}
             className="object-contain scale-100 opacity-10"
-            />
+          />
         </div>
-        </div>
+      </div>
 
       {/* Sisi Kanan - Form Login */}
       <div className="flex w-full flex-col items-center justify-center lg:w-1/2 p-8">
         <div className="mx-auto flex w-full max-w-[400px] flex-col justify-center space-y-6">
-          
           {/* Header & Logo */}
           <div className="mb-4 flex items-center justify-center space-x-2 text-blue-700 font-bold text-xl">
-                <Image
-                src="/Logo_text.svg"
-                alt="Ampera AI Logo"
-                width={150}
-                height={150}
-                className="object-contain"
-                />
-            </div>
+            <Image
+              src="/Logo_text.svg"
+              alt="Ampera AI Logo"
+              width={150}
+              height={150}
+              className="object-contain"
+            />
+          </div>
 
           <div className="flex flex-col items-start space-y-2 text-center gap-1">
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
@@ -60,9 +98,8 @@ export default function LoginPage() {
 
           {/* Form */}
           <div className="grid gap-5">
-            <form>
+            <form onSubmit={onSubmit}>
               <div className="grid gap-4">
-                
                 {/* Email */}
                 <div className="grid gap-2">
                   <Label htmlFor="email">Email Address</Label>
@@ -70,12 +107,15 @@ export default function LoginPage() {
                     <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                     <Input
                       id="email"
-                      placeholder="admin@organization.com"
+                      placeholder="boss@admin.com"
                       type="email"
                       autoCapitalize="none"
                       autoComplete="email"
                       autoCorrect="off"
                       className="pl-9"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
                     />
                   </div>
                 </div>
@@ -90,6 +130,9 @@ export default function LoginPage() {
                       type="password"
                       placeholder="••••••••"
                       className="pl-9"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
                     />
                   </div>
                 </div>
@@ -113,10 +156,24 @@ export default function LoginPage() {
                   </Link>
                 </div>
 
+                {error ? (
+                  <p className="text-sm text-red-600">{error}</p>
+                ) : null}
+
                 {/* Submit Button */}
-                <Button className="w-full bg-blue-700 hover:bg-blue-800 text-white mt-2">
-                  Sign In &rarr;
+                <Button
+                  className="w-full bg-blue-700 hover:bg-blue-800 text-white mt-2"
+                  disabled={loading}
+                  type="submit"
+                >
+                  {loading ? "Signing in..." : "Sign In →"}
                 </Button>
+
+                <p className="text-xs text-slate-500">
+                  Dev credentials:{" "}
+                  <code>boss@admin.com / admin</code> or{" "}
+                  <code>user@x.com / user</code>
+                </p>
               </div>
             </form>
           </div>
