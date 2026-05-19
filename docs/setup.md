@@ -147,7 +147,7 @@ venv\Scripts\activate
 Tutor setup db baru
 =========================================================
 
-buat db baru nama amperava_v2
+buat db baru nama ampera_v2
 sesuain database url di env
 python -m app.db.init_db
 python data\generate_synthetic.py
