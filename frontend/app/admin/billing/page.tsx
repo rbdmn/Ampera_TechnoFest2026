@@ -1,13 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { 
   Download, 
   FileText, 
   ChevronDown, 
   Filter, 
-  MoreVertical, 
   ChevronRight,
   Search,
   Eye,
@@ -19,18 +18,19 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { apiFetch } from "@/lib/api"
 
-// Dummy data untuk tabel invoice dengan bukti pembayaran
-const invoiceData = [
-  { room: "101", month: "Oct 2023", kwh: 450, rate: 1500, total: 675000, status: "Paid", paymentProof: "proof_101.jpg", paymentProofDate: "Oct 10, 2023" },
-  { room: "102", month: "Oct 2023", kwh: 320, rate: 1500, total: 480000, status: "Unpaid", paymentProof: null, paymentProofDate: null },
-  { room: "103", month: "Oct 2023", kwh: 510, rate: 1500, total: 765000, status: "Paid", paymentProof: "proof_103.jpg", paymentProofDate: "Oct 12, 2023" },
-  { room: "104", month: "Oct 2023", kwh: 280, rate: 1500, total: 420000, status: "Pending", paymentProof: "proof_104.jpg", paymentProofDate: null },
-  { room: "105", month: "Oct 2023", kwh: 605, rate: 1500, total: 907500, status: "Paid", paymentProof: "proof_105.jpg", paymentProofDate: "Oct 08, 2023" },
-  { room: "106", month: "Sep 2023", kwh: 420, rate: 1500, total: 630000, status: "Pending", paymentProof: "proof_106.jpg", paymentProofDate: null },
-  { room: "107", month: "Sep 2023", kwh: 380, rate: 1500, total: 570000, status: "Unpaid", paymentProof: null, paymentProofDate: null },
-  { room: "108", month: "Sep 2023", kwh: 570, rate: 1500, total: 855000, status: "Pending", paymentProof: "proof_108.jpg", paymentProofDate: null },
-]
+interface Invoice {
+  invoice_id: string
+  room_no: string
+  period: string
+  kwh_used: number
+  rate: number
+  total_amount: number
+  status: string // 'paid', 'unpaid', 'pending'
+  payment_proof_url?: string | null
+  updated_at?: string
+}
 
 // Fungsi format Rupiah
 const formatIDR = (value: number) => {
@@ -42,86 +42,152 @@ const formatIDR = (value: number) => {
   }).format(value).replace('Rp', 'Rp ')
 }
 
+// Helper: Generate 6 bulan terakhir dengan format YYYY-MM
+const generateMonthOptions = () => {
+  const options = []
+  const d = new Date()
+  for (let i = 0; i < 6; i++) {
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    options.push({ value: `${year}-${month}`, label })
+    d.setMonth(d.getMonth() - 1)
+  }
+  return options
+}
+
 export default function BillingPage() {
+  const monthOptions = useMemo(() => generateMonthOptions(), [])
+  
+  // STATE MANAGEMENT
+  const [selectedPeriod, setSelectedPeriod] = useState(monthOptions[0].value) // Default bulan ini
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // FILTER STATE
   const [searchTerm, setSearchTerm] = useState("")
-  const [sortBy, setSortBy] = useState<"none" | "kwh" | "amount">("none")
+  const [sortBy, setSortBy] = useState<"none" | "kwh_used" | "amount">("none")
   const [filterStatus, setFilterStatus] = useState<"all" | "paid" | "pending" | "unpaid">("all")
-  const [selectedMonth, setSelectedMonth] = useState("Oct 2023")
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isMonthOpen, setIsMonthOpen] = useState(false)
-  const [selectedInvoice, setSelectedInvoice] = useState<typeof invoiceData[0] | null>(null)
+
+  // MODAL STATE
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [showPreviewModal, setShowPreviewModal] = useState(false)
   const [paymentAction, setPaymentAction] = useState<"approve" | "reject" | null>(null)
 
-  const monthOptions = ["Oct 2023", "Sep 2023"]
+  // FETCH DATA
+  const fetchBillingData = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiFetch(`/billing/invoices?period=${selectedPeriod}`)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null)
+        throw new Error(errData?.detail || "Gagal memuat data tagihan")
+      }
+      const data = await res.json()
 
-  // Filter dan Sort Logic
+      // TAMBAHKAN INI UNTUK MENGINTIP DATA ASLI DARI BACKEND
+      console.log("DATA DARI BACKEND:", data) 
+      
+      // Jika backend mengirim dalam format { data: [...] }
+      const invoiceList = data.data || data || []
+      setInvoices(invoiceList)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchBillingData()
+  }, [selectedPeriod])
+
+  // LOGIC: Filter dan Sort Data
   const getFilteredAndSortedData = () => {
-    let data = [...invoiceData]
+    let data = [...invoices]
 
-    // Monthly filter
-    data = data.filter(item => item.month === selectedMonth)
-
-    // Search filter
     if (searchTerm) {
       data = data.filter(item => 
-        item.room.toLowerCase().includes(searchTerm.toLowerCase())
+        (item.room_no || "").toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
 
-    // Status filter
     if (filterStatus !== "all") {
-      data = data.filter(item => item.status.toLowerCase() === filterStatus)
+      data = data.filter(item => (item.status || "").toLowerCase() === filterStatus)
     }
 
-    // Sort
-    if (sortBy === "kwh") {
-      data.sort((a, b) => b.kwh - a.kwh)
+    if (sortBy === "kwh_used") {
+      data.sort((a, b) => (b.kwh_used || 0) - (a.kwh_used || 0))
     } else if (sortBy === "amount") {
-      data.sort((a, b) => b.total - a.total)
+      data.sort((a, b) => (b.total_amount || 0) - (a.total_amount || 0))
     }
 
     return data
   }
 
   const filteredData = getFilteredAndSortedData()
-  const monthlyUsage = filteredData.reduce((sum, item) => sum + item.kwh, 0)
-  const monthlyRevenue = filteredData.reduce((sum, item) => sum + item.total, 0)
-  const hasActiveFilters = searchTerm !== "" || sortBy !== "none" || filterStatus !== "all" || selectedMonth !== "Oct 2023"
+  
+  // LOGIC: Kalkulasi Widget Summary Berdasarkan Data API
+  const monthlyUsage = invoices.reduce((sum, item) => sum + (item.kwh_used || 0), 0)
+  const monthlyRevenue = invoices.reduce((sum, item) => sum + (item.total_amount || 0), 0)
+  const collectedRevenue = invoices.filter(i => i.status.toLowerCase() === 'paid').reduce((sum, item) => sum + (item.total_amount || 0), 0)
+  
+  const countPaid = invoices.filter(i => i.status.toLowerCase() === 'paid').length
+  const countPending = invoices.filter(i => i.status.toLowerCase() === 'pending').length
+  const countUnpaid = invoices.filter(i => i.status.toLowerCase() === 'unpaid').length
+  const totalInvoices = invoices.length || 1 // Avoid division by zero
+  
+  const percentPaid = Math.round((countPaid / totalInvoices) * 100)
+  const percentPending = Math.round((countPending / totalInvoices) * 100)
+  const percentUnpaid = Math.round((countUnpaid / totalInvoices) * 100)
 
-  const handleViewProof = (invoice: typeof invoiceData[0]) => {
+  const hasActiveFilters = searchTerm !== "" || sortBy !== "none" || filterStatus !== "all"
+
+  // HANDLER: Modal Action
+  const handleViewProof = (invoice: Invoice) => {
     setSelectedInvoice(invoice)
     setShowPreviewModal(true)
     setPaymentAction(null)
   }
 
-  const handleApprove = () => {
-    setPaymentAction("approve")
-    setTimeout(() => {
-      alert("Payment approved for Room " + selectedInvoice?.room)
-      setShowPreviewModal(false)
-    }, 500)
-  }
+  // API Call untuk Approve/Reject (PATCH /billing/invoices/{id}/status)
+  const updateInvoiceStatus = async (status: "paid" | "unpaid") => {
+    if (!selectedInvoice) return
+    setPaymentAction(status === "paid" ? "approve" : "reject")
+    
+    try {
+      const res = await apiFetch(`/billing/invoices/${selectedInvoice.invoice_id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: status })
+      })
 
-  const handleReject = () => {
-    setPaymentAction("reject")
-    setTimeout(() => {
-      alert("Payment rejected for Room " + selectedInvoice?.room)
+      if (!res.ok) throw new Error("Gagal mengupdate status")
+      
+      alert(`Payment ${status === "paid" ? "approved" : "rejected"} for Room ${selectedInvoice.room_no}`)
       setShowPreviewModal(false)
-    }, 500)
+      fetchBillingData() // Refresh data setelah update sukses
+    } catch (err: any) {
+      alert(err.message || "Terjadi kesalahan")
+    } finally {
+      setPaymentAction(null)
+    }
   }
 
   const handleClearFilters = () => {
     setSearchTerm("")
     setSortBy("none")
     setFilterStatus("all")
-    setSelectedMonth("Oct 2023")
     setIsFilterOpen(false)
   }
 
+  const selectedMonthLabel = monthOptions.find(m => m.value === selectedPeriod)?.label || selectedPeriod
+
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
-      
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -135,38 +201,38 @@ export default function BillingPage() {
           <div className="relative">
             <Button 
               variant="outline" 
-              className="text-slate-700 font-medium h-9 text-sm bg-white"
+              className="text-slate-700 font-medium h-9 text-sm bg-white min-w-[140px] justify-between"
               onClick={() => setIsMonthOpen(!isMonthOpen)}
             >
-              <Calendar className="mr-2 h-4 w-4 text-slate-400" />
-              {selectedMonth}
+              <span className="flex items-center">
+                <Calendar className="mr-2 h-4 w-4 text-slate-400" />
+                {selectedMonthLabel}
+              </span>
               <ChevronDown className="ml-2 h-4 w-4 text-slate-400" />
             </Button>
             {isMonthOpen && (
-              <div className="absolute right-0 z-20 mt-2 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+              <div className="absolute right-0 z-20 mt-2 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
                 {monthOptions.map((month) => (
                   <button
-                    key={month}
+                    key={month.value}
                     onClick={() => {
-                      setSelectedMonth(month)
+                      setSelectedPeriod(month.value)
                       setIsMonthOpen(false)
                     }}
-                    className={`w-full text-left px-4 py-2 text-sm ${selectedMonth === month ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
+                    className={`w-full text-left px-4 py-2 text-sm ${selectedPeriod === month.value ? 'bg-slate-100 text-slate-900 font-semibold' : 'text-slate-700 hover:bg-slate-50'}`}
                   >
-                    {month}
+                    {month.label}
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Export CSV */}
           <Button variant="outline" className="text-slate-700 font-medium h-9 text-sm bg-white">
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
 
-          {/* Generate Report */}
           <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm">
             <FileText className="mr-2 h-4 w-4" />
             Generate Monthly Report
@@ -178,23 +244,23 @@ export default function BillingPage() {
       <Card className="bg-white">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-6 gap-6">
           <div>
-            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Total Building Usage ({selectedMonth})</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Total Building Usage ({selectedMonthLabel})</p>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold text-slate-900">{monthlyUsage.toLocaleString()}</span>
+              <span className="text-3xl font-bold text-slate-900">{loading ? "..." : monthlyUsage.toLocaleString("en-US", {maximumFractionDigits: 1})}</span>
               <span className="text-sm font-medium text-slate-500">kWh</span>
             </div>
           </div>
           <div className="sm:text-right">
             <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Expected Revenue</p>
-            <div className="text-3xl font-bold text-blue-700">{formatIDR(monthlyRevenue)}</div>
+            <div className="text-3xl font-bold text-blue-700">{loading ? "..." : formatIDR(monthlyRevenue)}</div>
           </div>
         </div>
       </Card>
 
-      {/* Split Content: Main Table (Left) and Sidebar Widgets (Right) */}
+      {/* Main Table and Sidebar */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         
-        {/* LEFT COLUMN: Invoices Table (Takes up 2/3 width on large screens) */}
+        {/* LEFT COLUMN: Invoices Table */}
         <div className="xl:col-span-2 space-y-6">
           <Card className="bg-white">
             <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
@@ -202,8 +268,7 @@ export default function BillingPage() {
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <Button 
-                    variant="outline" 
-                    size="sm"
+                    variant="outline" size="sm"
                     onClick={() => setIsFilterOpen(!isFilterOpen)}
                     className={`text-sm ${hasActiveFilters ? "bg-blue-50 border-blue-300" : ""}`}
                   >
@@ -225,7 +290,7 @@ export default function BillingPage() {
                         <Search className="pointer-events-none absolute left-3 top-10 h-4 w-4 text-slate-400" />
                         <input
                           type="text"
-                          placeholder="Search room number..."
+                          placeholder="Search room id..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
                           className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded text-sm focus:outline-none focus:border-blue-500"
@@ -237,33 +302,15 @@ export default function BillingPage() {
                         <h4 className="text-xs font-bold text-slate-600 uppercase mb-2">Sort By</h4>
                         <div className="space-y-2">
                           <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
-                            <input 
-                              type="radio" 
-                              name="sort" 
-                              checked={sortBy === "none"}
-                              onChange={() => setSortBy("none")}
-                              className="w-4 h-4"
-                            />
+                            <input type="radio" name="sort" checked={sortBy === "none"} onChange={() => setSortBy("none")} className="w-4 h-4" />
                             <span className="text-sm text-slate-700">Default</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
-                            <input 
-                              type="radio" 
-                              name="sort" 
-                              checked={sortBy === "kwh"}
-                              onChange={() => setSortBy("kwh")}
-                              className="w-4 h-4"
-                            />
+                            <input type="radio" name="sort" checked={sortBy === "kwh_used"} onChange={() => setSortBy("kwh_used")} className="w-4 h-4" />
                             <span className="text-sm text-slate-700">kWh Tertinggi</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
-                            <input 
-                              type="radio" 
-                              name="sort" 
-                              checked={sortBy === "amount"}
-                              onChange={() => setSortBy("amount")}
-                              className="w-4 h-4"
-                            />
+                            <input type="radio" name="sort" checked={sortBy === "amount"} onChange={() => setSortBy("amount")} className="w-4 h-4" />
                             <span className="text-sm text-slate-700">Total Amount Tertinggi</span>
                           </label>
                         </div>
@@ -274,57 +321,27 @@ export default function BillingPage() {
                         <h4 className="text-xs font-bold text-slate-600 uppercase mb-2">Filter Status</h4>
                         <div className="space-y-2">
                           <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
-                            <input 
-                              type="radio" 
-                              name="status" 
-                              checked={filterStatus === "all"}
-                              onChange={() => setFilterStatus("all")}
-                              className="w-4 h-4"
-                            />
+                            <input type="radio" name="status" checked={filterStatus === "all"} onChange={() => setFilterStatus("all")} className="w-4 h-4"/>
                             <span className="text-sm text-slate-700">All Status</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
-                            <input 
-                              type="radio" 
-                              name="status" 
-                              checked={filterStatus === "paid"}
-                              onChange={() => setFilterStatus("paid")}
-                              className="w-4 h-4"
-                            />
+                            <input type="radio" name="status" checked={filterStatus === "paid"} onChange={() => setFilterStatus("paid")} className="w-4 h-4"/>
                             <span className="text-sm text-emerald-700 font-medium">Paid</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
-                            <input 
-                              type="radio" 
-                              name="status" 
-                              checked={filterStatus === "pending"}
-                              onChange={() => setFilterStatus("pending")}
-                              className="w-4 h-4"
-                            />
+                            <input type="radio" name="status" checked={filterStatus === "pending"} onChange={() => setFilterStatus("pending")} className="w-4 h-4"/>
                             <span className="text-sm text-amber-700 font-medium">Pending</span>
                           </label>
                           <label className="flex items-center gap-2 cursor-pointer hover:bg-slate-50 p-2 rounded">
-                            <input 
-                              type="radio" 
-                              name="status" 
-                              checked={filterStatus === "unpaid"}
-                              onChange={() => setFilterStatus("unpaid")}
-                              className="w-4 h-4"
-                            />
+                            <input type="radio" name="status" checked={filterStatus === "unpaid"} onChange={() => setFilterStatus("unpaid")} className="w-4 h-4"/>
                             <span className="text-sm text-red-700 font-medium">Unpaid</span>
                           </label>
                         </div>
                       </div>
 
-                      {/* Clear Button */}
                       {hasActiveFilters && (
                         <div className="border-t pt-4">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="w-full text-xs"
-                            onClick={handleClearFilters}
-                          >
+                          <Button variant="outline" size="sm" className="w-full text-xs" onClick={handleClearFilters}>
                             <X className="h-3 w-3 mr-1" />
                             Clear Filters
                           </Button>
@@ -336,136 +353,110 @@ export default function BillingPage() {
               </div>
             </CardHeader>
             
-            {/* Filter Status Info */}
-            {hasActiveFilters && (
-              <div className="px-6 py-3 bg-blue-50 border-b border-blue-100 flex items-center justify-between text-xs">
-                <span className="text-blue-900 font-medium">
-                  {searchTerm && `Room: "${searchTerm}" • `}
-                  {sortBy !== "none" && `Sorted by: ${sortBy === "kwh" ? "kWh Tertinggi" : "Total Amount Tertinggi"} • `}
-                  {filterStatus !== "all" && `Status: ${filterStatus}`}
-                </span>
-                <button 
-                  onClick={handleClearFilters}
-                  className="text-blue-600 hover:text-blue-800 font-semibold"
-                >
-                  Clear
-                </button>
-              </div>
-            )}
-            
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto min-h-[300px]">
               <table className="w-full text-sm text-left">
                 <thead className="text-xs text-slate-500 bg-slate-50/80 border-b">
                   <tr>
-                    <th className="px-6 py-4 font-semibold">Room No</th>
+                    <th className="px-6 py-4 font-semibold">Room ID</th>
                     <th className="px-6 py-4 font-semibold text-right">kWh Used</th>
                     <th className="px-6 py-4 font-semibold text-right">Rate (IDR)</th>
                     <th className="px-6 py-4 font-semibold text-right">Total Amount</th>
                     <th className="px-6 py-4 font-semibold text-center">Status</th>
-                    <th className="px-6 py-4 font-semibold text-center">Bukti Pembayaran</th>
-                    <th className="px-6 py-4 font-semibold text-center">Detail Room</th>
+                    <th className="px-6 py-4 font-semibold text-center">Payment Proof</th>
+                    <th className="px-6 py-4 font-semibold text-center">Detail</th>
                     <th className="px-6 py-4 font-semibold text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredData.length > 0 ? (
-                    filteredData.map((invoice, index) => (
-                      <tr key={index} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-slate-900">{invoice.room}</td>
-                        <td className="px-6 py-4 text-slate-700 font-medium text-right">{invoice.kwh}</td>
-                        <td className="px-6 py-4 text-slate-500 text-right">1,500</td>
-                        <td className="px-6 py-4 font-bold text-slate-900 text-right">{formatIDR(invoice.total)}</td>
-                        <td className="px-6 py-4 text-center">
-                          {invoice.status === 'Paid' && (
-                            <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded-sm bg-emerald-50 text-emerald-600 border border-emerald-100">
-                              Paid
-                            </span>
-                          )}
-                          {invoice.status === 'Unpaid' && (
-                            <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded-sm bg-red-50 text-red-600 border border-red-100">
-                              Unpaid
-                            </span>
-                          )}
-                          {invoice.status === 'Pending' && (
-                            <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded-sm bg-amber-50 text-amber-600 border border-amber-100">
-                              <Clock className="h-3 w-3 mr-1" />
-                              Pending
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          {invoice.paymentProof ? (
-                            <button 
-                              onClick={() => handleViewProof(invoice)}
-                              className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded transition-colors inline-flex items-center gap-1"
+                  {loading ? (
+                    <tr><td colSpan={8} className="text-center py-8 text-slate-500">Memuat data tagihan...</td></tr>
+                  ) : error ? (
+                    <tr><td colSpan={8} className="text-center py-8 text-red-500">{error}</td></tr>
+                  ) : filteredData.length > 0 ? (
+                    filteredData.map((invoice, index) => {
+                      const statusClean = (invoice.status || "unpaid").toLowerCase()
+                      return (
+                        <tr key={invoice.invoice_id || index} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 font-medium text-slate-900">{invoice.room_no}</td>
+                          <td className="px-6 py-4 text-slate-700 font-medium text-right">{invoice.kwh_used?.toFixed(1) || "-"}</td>
+                          <td className="px-6 py-4 text-slate-500 text-right">{invoice.rate?.toLocaleString() || "-"}</td>
+                          <td className="px-6 py-4 font-bold text-slate-900 text-right">{formatIDR(invoice.total_amount)}</td>
+                          <td className="px-6 py-4 text-center">
+                            {statusClean === 'paid' && (
+                              <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded-sm bg-emerald-50 text-emerald-600 border border-emerald-100">Paid</span>
+                            )}
+                            {statusClean === 'unpaid' && (
+                              <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded-sm bg-red-50 text-red-600 border border-red-100">Unpaid</span>
+                            )}
+                            {statusClean === 'pending' && (
+                              <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded-sm bg-amber-50 text-amber-600 border border-amber-100">
+                                <Clock className="h-3 w-3 mr-1" /> Pending
+                              </span>
+                            )}
+                            {/* Tambahkan fallback kalau status tidak dikenal */}
+                            {!['paid', 'unpaid', 'pending'].includes(statusClean) && (
+                              <span className="text-xs text-slate-400 capitalize">{statusClean}</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {invoice.payment_proof_url ? (
+                              <button 
+                                onClick={() => handleViewProof(invoice)}
+                                className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 p-2 rounded transition-colors inline-flex items-center gap-1"
+                              >
+                                <Image className="h-4 w-4" />
+                                <span className="text-xs font-medium">View</span>
+                              </button>
+                            ) : (
+                              <span className="text-slate-400 text-xs">No proof</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <Link
+                              href={`/admin/billing/${invoice.invoice_id}`}
+                              className="inline-flex items-center justify-center rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
                             >
-                              <Image className="h-4 w-4" />
-                              <span className="text-xs font-medium">View</span>
-                            </button>
-                          ) : (
-                            <span className="text-slate-400 text-xs">No proof</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <Link
-                            href={`/admin/billing/${invoice.room}`}
-                            className="inline-flex items-center justify-center rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
-                          >
-                            View Details
-                            <ChevronRight className="ml-2 h-4 w-4" />
-                          </Link>
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            {invoice.status === 'Pending' && invoice.paymentProof && (
-                              <>
+                              Details
+                              <ChevronRight className="ml-1 h-4 w-4" />
+                            </Link>
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {statusClean === 'pending' && (
                                 <button 
                                   onClick={() => handleViewProof(invoice)}
-                                  className="text-slate-400 hover:text-blue-600 p-1.5 rounded transition-colors"
-                                  title="View Details"
+                                  className="text-amber-600 hover:text-amber-800 p-1.5 rounded bg-amber-50 transition-colors"
+                                  title="Review Verification"
                                 >
                                   <Eye className="h-4 w-4" />
                                 </button>
-                              </>
-                            )}
-                            {invoice.status !== 'Pending' && (
-                              <button className="text-slate-300 p-1.5 rounded cursor-not-allowed" disabled>
-                                <FileText className="h-4 w-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                              )}
+                              {statusClean !== 'pending' && (
+                                <button className="text-slate-300 p-1.5 rounded cursor-not-allowed" disabled>
+                                  <FileText className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
                   ) : (
                     <tr>
                       <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                         <p className="font-medium">No invoices found</p>
-                        <p className="text-xs">Try adjusting your filters</p>
+                        <p className="text-xs">Data mungkin kosong atau tidak lolos filter</p>
                       </td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between px-6 py-4 border-t text-sm text-slate-500">
-              <div>Showing 1 to 5 of 45 entries</div>
-              <div className="flex items-center gap-1">
-                <button className="px-3 py-1.5 border rounded text-slate-500 hover:bg-slate-50 bg-white font-medium">Prev</button>
-                <button className="px-3 py-1.5 border rounded bg-blue-600 text-white font-medium">1</button>
-                <button className="px-3 py-1.5 border rounded hover:bg-slate-50 text-slate-600 bg-white font-medium">2</button>
-                <button className="px-3 py-1.5 border rounded hover:bg-slate-50 text-slate-600 bg-white font-medium">Next</button>
-              </div>
-            </div>
           </Card>
         </div>
 
         {/* RIGHT COLUMN: Summary Widgets */}
         <div className="space-y-6">
-          
-          {/* Collection Status Card */}
           <Card className="bg-white">
             <CardHeader className="border-b pb-4">
               <CardTitle className="text-base font-semibold">Collection Status</CardTitle>
@@ -473,14 +464,14 @@ export default function BillingPage() {
             <CardContent className="pt-6">
               {/* Custom Progress Bar */}
               <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex mb-2">
-                <div className="h-full bg-emerald-500" style={{ width: '75%' }}></div>
-                <div className="h-full bg-amber-500" style={{ width: '13%' }}></div>
-                <div className="h-full bg-red-500" style={{ width: '12%' }}></div>
+                <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${percentPaid}%` }}></div>
+                <div className="h-full bg-amber-500 transition-all duration-500" style={{ width: `${percentPending}%` }}></div>
+                <div className="h-full bg-red-500 transition-all duration-500" style={{ width: `${percentUnpaid}%` }}></div>
               </div>
               
               <div className="flex justify-between text-xs font-semibold text-slate-900 mb-6">
-                <span>Rp 16,031,250 Collected</span>
-                <span>75%</span>
+                <span>{formatIDR(collectedRevenue)} Collected</span>
+                <span>{percentPaid || 0}%</span>
               </div>
 
               {/* Legend */}
@@ -490,21 +481,21 @@ export default function BillingPage() {
                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
                     <span className="font-medium text-slate-700">Paid</span>
                   </div>
-                  <span className="font-semibold text-slate-900">34 <span className="text-slate-500 font-normal">Rooms</span></span>
+                  <span className="font-semibold text-slate-900">{countPaid} <span className="text-slate-500 font-normal">Rooms</span></span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full bg-amber-500"></div>
-                    <span className="font-medium text-slate-700">Pending</span>
+                    <span className="font-medium text-slate-700">Pending Verify</span>
                   </div>
-                  <span className="font-semibold text-slate-900">6 <span className="text-slate-500 font-normal">Rooms</span></span>
+                  <span className="font-semibold text-slate-900">{countPending} <span className="text-slate-500 font-normal">Rooms</span></span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
                     <span className="font-medium text-slate-700">Unpaid</span>
                   </div>
-                  <span className="font-semibold text-slate-900">5 <span className="text-slate-500 font-normal">Rooms</span></span>
+                  <span className="font-semibold text-slate-900">{countUnpaid} <span className="text-slate-500 font-normal">Rooms</span></span>
                 </div>
               </div>
             </CardContent>
@@ -518,7 +509,7 @@ export default function BillingPage() {
           <Card className="w-full max-w-2xl bg-white shadow-xl">
             <CardHeader className="border-b pb-4 flex flex-row items-center justify-between">
               <CardTitle className="text-lg font-bold">
-                Payment Proof - Room {selectedInvoice.room}
+                Verification - Room {selectedInvoice.room_no}
               </CardTitle>
               <button 
                 onClick={() => setShowPreviewModal(false)}
@@ -532,41 +523,50 @@ export default function BillingPage() {
               {/* Invoice Details */}
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase mb-1">Room Number</p>
-                  <p className="font-bold text-slate-900">{selectedInvoice.room}</p>
+                  <p className="text-slate-500 text-xs font-bold uppercase mb-1">Room / Invoice ID</p>
+                  <p className="font-bold text-slate-900">{selectedInvoice.room_no}</p>
+                  <p className="text-xs text-slate-400">{selectedInvoice.invoice_id}</p>
                 </div>
                 <div>
                   <p className="text-slate-500 text-xs font-bold uppercase mb-1">kWh Used</p>
-                  <p className="font-bold text-slate-900">{selectedInvoice.kwh}</p>
+                  <p className="font-bold text-slate-900">{selectedInvoice.kwh_used?.toFixed(1) || "-"}</p>
                 </div>
                 <div>
                   <p className="text-slate-500 text-xs font-bold uppercase mb-1">Total Amount</p>
-                  <p className="font-bold text-emerald-600 text-lg">{formatIDR(selectedInvoice.total)}</p>
+                  <p className="font-bold text-emerald-600 text-lg">{formatIDR(selectedInvoice.total_amount)}</p>
                 </div>
                 <div>
                   <p className="text-slate-500 text-xs font-bold uppercase mb-1">Current Status</p>
-                  <p className="font-bold">
-                    <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded-sm bg-amber-50 text-amber-600 border border-amber-100">
-                      {selectedInvoice.status}
-                    </span>
+                  <p className="font-bold uppercase text-[10px]">
+                    {selectedInvoice.status}
                   </p>
                 </div>
               </div>
 
-              {/* Payment Proof Image Placeholder */}
-              <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 bg-slate-50 flex flex-col items-center justify-center min-h-64">
-                <Image className="h-12 w-12 text-slate-300 mb-3" />
-                <p className="text-sm text-slate-600 font-medium">Payment Proof Image</p>
-                <p className="text-xs text-slate-500">{selectedInvoice.paymentProof}</p>
+              {/* Payment Proof Image */}
+              <div className="border-2 border-dashed border-slate-300 rounded-lg overflow-hidden bg-slate-50 flex flex-col items-center justify-center min-h-[300px]">
+                {selectedInvoice.payment_proof_url ? (
+                  // Idealnya menggunakan next/image jika domain terdaftar, atau img tag biasa:
+                  <img 
+                    src={selectedInvoice.payment_proof_url.startsWith('http') ? selectedInvoice.payment_proof_url : `http://localhost:8000${selectedInvoice.payment_proof_url}`} 
+                    alt="Payment Proof" 
+                    className="max-w-full max-h-[400px] object-contain"
+                  />
+                ) : (
+                  <>
+                    <Image className="h-12 w-12 text-slate-300 mb-3" />
+                    <p className="text-sm text-slate-600 font-medium">No Payment Proof Uploaded</p>
+                  </>
+                )}
               </div>
 
               {/* Action Buttons - Only show for Pending status */}
-              {selectedInvoice.status === 'Pending' && (
+              {(selectedInvoice.status || "").toLowerCase() === 'pending' && (
                 <div className="space-y-3 border-t pt-6">
                   <p className="text-sm font-bold text-slate-700">Verification Action</p>
                   <div className="grid grid-cols-2 gap-3">
                     <Button
-                      onClick={handleApprove}
+                      onClick={() => updateInvoiceStatus("paid")}
                       disabled={paymentAction !== null}
                       className={`${
                         paymentAction === "approve"
@@ -578,7 +578,7 @@ export default function BillingPage() {
                       {paymentAction === "approve" ? "Approving..." : "Approve Payment"}
                     </Button>
                     <Button
-                      onClick={handleReject}
+                      onClick={() => updateInvoiceStatus("unpaid")}
                       disabled={paymentAction !== null}
                       className={`${
                         paymentAction === "reject"
@@ -587,28 +587,9 @@ export default function BillingPage() {
                       } text-white`}
                     >
                       <X className="h-4 w-4 mr-2" />
-                      {paymentAction === "reject" ? "Rejecting..." : "Reject Payment"}
+                      {paymentAction === "reject" ? "Rejecting..." : "Reject (Mark Unpaid)"}
                     </Button>
                   </div>
-                  <Button
-                    onClick={() => setShowPreviewModal(false)}
-                    variant="outline"
-                    className="w-full"
-                  >
-                    Close
-                  </Button>
-                </div>
-              )}
-
-              {/* Action Buttons - Read-only for Paid/Unpaid */}
-              {selectedInvoice.status !== 'Pending' && (
-                <div>
-                  <Button
-                    onClick={() => setShowPreviewModal(false)}
-                    className="w-full"
-                  >
-                    Close
-                  </Button>
                 </div>
               )}
             </CardContent>

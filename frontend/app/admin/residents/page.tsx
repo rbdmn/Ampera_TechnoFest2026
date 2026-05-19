@@ -13,7 +13,8 @@ import {
   Filter,
   MoreHorizontal,
   Search,
-  X
+  X,
+  Loader2
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -28,20 +29,48 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogClose
 } from "@/components/ui/dialog"
+import { apiFetch } from "@/lib/api"
 
-// Dummy data sesuai desain
-const roomsData = [
-  { id: "101", floor: "1st Floor", resident: "Alice Johnson", kwh: 245.5, cost: "$36.82", status: "Normal" },
-  { id: "102", floor: "1st Floor", resident: "Robert Smith", kwh: 412.0, cost: "$61.88", status: "Warning" },
-  { id: "205", floor: "2nd Floor", resident: "Unassigned", kwh: 5.2, cost: "$0.78", status: "Vacant" },
-  { id: "310", floor: "3rd Floor", resident: "Elena Rodriguez", kwh: 890.4, cost: "$133.56", status: "Exceeded" },
-  { id: "312", floor: "3rd Floor", resident: "David Chen", kwh: 180.1, cost: "$27.01", status: "Normal" },
-]
+// --- Interfaces sesuai respons dari API backend ---
+interface RoomTableData {
+  room_id: string
+  room_no: string
+  floor: number
+  resident_name: string | null
+  monthly_kwh: number
+  estimated_cost: number
+  status: string // "Normal" | "Warning" | "Exceeded" | "Vacant"
+}
+
+interface RoomSummary {
+  total_rooms: number
+  vacant_units: number
+  warnings_count: number
+  critical_count: number
+}
+
+// Helper untuk format mata uang
+const formatIDR = (value: number) => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(value).replace('Rp', 'Rp ')
+}
 
 export default function RoomManagementPage() {
   const router = useRouter()
+  
+  // States
+  const [rooms, setRooms] = useState<RoomTableData[]>([])
+  const [summary, setSummary] = useState<RoomSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Filter States
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedFloor, setSelectedFloor] = useState("all")
   const [selectedStatus, setSelectedStatus] = useState("all")
@@ -50,6 +79,10 @@ export default function RoomManagementPage() {
 
   const floorRef = useRef<HTMLDivElement>(null)
   const statusRef = useRef<HTMLDivElement>(null)
+
+  // Pagination states (Dari API meta)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalItems, setTotalItems] = useState(0)
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -61,63 +94,121 @@ export default function RoomManagementPage() {
         setIsStatusOpen(false)
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const floorOptions = ["all", "1st Floor", "2nd Floor", "3rd Floor"]
-  const statusOptions = ["all", "Normal", "Warning", "Vacant", "Exceeded"]
+  // Fungsi Fetch Data dari Backend
+  const fetchRoomData = async () => {
+    setLoading(true)
+    try {
+      // 1. Fetch Summary Data
+      const summaryRes = await apiFetch('/rooms/summary')
+      if (summaryRes.ok) {
+        setSummary(await summaryRes.json())
+      }
 
-  // Filter logic
-  const getFilteredData = () => {
-    let data = [...roomsData]
+      // 2. Fetch Table Data (dengan filter)
+      const params = new URLSearchParams()
+      params.append("page", currentPage.toString())
+      params.append("limit", "10")
+      
+      if (searchTerm) params.append("search", searchTerm)
+      if (selectedStatus !== "all") params.append("status", selectedStatus)
+      if (selectedFloor !== "all") {
+        // Ambil angkanya saja, misal "1st Floor" -> "1"
+        const floorNum = selectedFloor.replace(/\D/g, '')
+        params.append("floor", floorNum)
+      }
 
-    // Search filter
-    if (searchTerm) {
-      data = data.filter(room => 
-        room.resident.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        room.id.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      const tableRes = await apiFetch(`/rooms/table?${params.toString()}`)
+      if (tableRes.ok) {
+        const json = await tableRes.json()
+        setRooms(json.data || [])
+        if (json.meta) {
+          setTotalItems(json.meta.total_items)
+        }
+      }
+    } catch (error) {
+      console.error("Gagal mengambil data kamar:", error)
+    } finally {
+      setLoading(false)
     }
-
-    // Floor filter
-    if (selectedFloor !== "all") {
-      data = data.filter(room => room.floor === selectedFloor)
-    }
-
-    // Status filter
-    if (selectedStatus !== "all") {
-      data = data.filter(room => room.status === selectedStatus)
-    }
-
-    return data
   }
 
-  const filteredData = getFilteredData()
+  // Trigger fetch saat filter berubah (menggunakan debounce khusus untuk pencarian agar tidak spam API)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchRoomData()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm, selectedFloor, selectedStatus, currentPage])
+
+  const floorOptions = ["all", "1st Floor", "2nd Floor", "3rd Floor", "4th Floor"]
+  const statusOptions = ["all", "Normal", "Warning", "Vacant", "Exceeded"]
+
   const hasActiveFilters = searchTerm !== "" || selectedFloor !== "all" || selectedStatus !== "all"
 
   const handleClearFilters = () => {
     setSearchTerm("")
     setSelectedFloor("all")
     setSelectedStatus("all")
+    setCurrentPage(1)
     setIsFloorOpen(false)
     setIsStatusOpen(false)
   }
 
-  // Fungsi untuk render badge status dengan warna dinamis
+  // Submit Handler untuk Add New Room
+  const handleAddRoom = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsSubmitting(true)
+
+    const formData = new FormData(e.currentTarget)
+    // Sesuai payload endpoint POST /rooms/
+    const payload = {
+      room_no: formData.get("room_no"),
+      floor: parseInt(formData.get("floor") as string),
+      max_occupants: parseInt(formData.get("max_occupants") as string),
+      monthly_limit_kwh: parseFloat(formData.get("monthly_limit_kwh") as string),
+      tariff_per_kwh: parseFloat(formData.get("tariff_per_kwh") as string)
+    }
+
+    try {
+      const res = await apiFetch("/rooms/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || "Gagal menambahkan kamar")
+      }
+
+      alert("Kamar berhasil ditambahkan!")
+      setIsDialogOpen(false)
+      fetchRoomData() // Refresh tabel dan summary
+    } catch (error: any) {
+      alert(error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Render badge status dengan warna dinamis
   const renderStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Normal':
+    const cleanStatus = (status || "").toLowerCase()
+    switch (cleanStatus) {
+      case 'normal':
         return <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded bg-emerald-50 text-emerald-600 border border-emerald-100">Normal</span>
-      case 'Warning':
+      case 'warning':
         return <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded bg-orange-50 text-orange-600 border border-orange-100">Warning</span>
-      case 'Vacant':
+      case 'vacant':
         return <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded bg-slate-100 text-slate-500 border border-slate-200">Vacant</span>
-      case 'Exceeded':
+      case 'exceeded':
         return <span className="inline-flex px-2.5 py-1 text-[10px] font-bold rounded bg-red-50 text-red-600 border border-red-100">Exceeded</span>
       default:
-        return <span>{status}</span>
+        return <span className="capitalize">{status}</span>
     }
   }
 
@@ -138,8 +229,8 @@ export default function RoomManagementPage() {
             Export CSV
           </Button>
 
-          {/* Dialog / Popup Add New Room */}
-          <Dialog>
+          {/* Dialog Add New Room */}
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm">
                 <Plus className="mr-2 h-4 w-4" />
@@ -147,75 +238,63 @@ export default function RoomManagementPage() {
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>Add New Room</DialogTitle>
-                <DialogDescription>
-                  Enter the room details below. Fields marked as (Legacy) are optional.
-                </DialogDescription>
-              </DialogHeader>
-              
-              {/* Form Fields menyesuaikan DB Schema */}
-              <div className="grid gap-4 py-4">
+              <form onSubmit={handleAddRoom}>
+                <DialogHeader>
+                  <DialogTitle>Add New Room</DialogTitle>
+                  <DialogDescription>
+                    Enter the room details below. Fields marked as (Legacy) are optional.
+                  </DialogDescription>
+                </DialogHeader>
                 
-                {/* Baris 1: Room ID & Floor */}
+                <div className="grid gap-4 py-4">
+                {/* Row 1: Room No & Floor */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="room_id" className="text-xs font-semibold text-slate-700">Room ID <span className="text-red-500">*</span></Label>
-                    <Input id="room_id" placeholder="e.g. 101" className="h-9" />
+                    <Label htmlFor="room_no" className="text-xs font-semibold text-slate-700">Room No <span className="text-red-500">*</span></Label>
+                    <Input id="room_no" name="room_no" placeholder="e.g. 101" required className="h-9" />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="floor" className="text-xs font-semibold text-slate-700">Floor <span className="text-red-500">*</span></Label>
-                    <Input id="floor" type="number" placeholder="e.g. 1" className="h-9" />
+                    <Input id="floor" name="floor" type="number" placeholder="e.g. 1" required className="h-9" />
                   </div>
                 </div>
 
-                {/* Baris 2: Tenant Name & Email (Nullable) */}
+                {/* Row 2: Limit & Tariff */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="tenant_name" className="text-xs font-semibold text-slate-700">Tenant Name <span className="text-slate-400 font-normal">(Optional)</span></Label>
-                    <Input id="tenant_name" placeholder="e.g. Jane Doe" className="h-9" />
+                    <Label htmlFor="monthly_limit_kwh" className="text-xs font-semibold text-slate-700">Limit (kWh) <span className="text-red-500">*</span></Label>
+                    <Input id="monthly_limit_kwh" name="monthly_limit_kwh" type="number" step="0.1" defaultValue="500" required className="h-9" />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="tenant_email" className="text-xs font-semibold text-slate-700">Tenant Email <span className="text-slate-400 font-normal">(Optional)</span></Label>
-                    <Input id="tenant_email" type="email" placeholder="jane@example.com" className="h-9" />
+                    <Label htmlFor="tariff_per_kwh" className="text-xs font-semibold text-slate-700">Tariff (IDR) <span className="text-red-500">*</span></Label>
+                    <Input id="tariff_per_kwh" name="tariff_per_kwh" type="number" step="0.1" defaultValue="1444.7" required className="h-9" />
                   </div>
                 </div>
 
-                {/* Baris 3: Limits & Tariffs (Float) */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="monthly_limit_kwh" className="text-xs font-semibold text-slate-700">Monthly Limit (kWh) <span className="text-red-500">*</span></Label>
-                    <Input id="monthly_limit_kwh" type="number" step="0.01" placeholder="e.g. 450" className="h-9" />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="tariff_per_kwh" className="text-xs font-semibold text-slate-700">Tariff / kWh (IDR) <span className="text-red-500">*</span></Label>
-                    <Input id="tariff_per_kwh" type="number" step="0.01" placeholder="e.g. 1500" className="h-9" />
-                  </div>
-                </div>
-
-                {/* Baris 4: Max Occupants */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* Row 3: Max Occupants */}
+                <div className="grid grid-cols-1">
                   <div className="grid gap-2">
                     <Label htmlFor="max_occupants" className="text-xs font-semibold text-slate-700">Max Occupants <span className="text-red-500">*</span></Label>
-                    <Input id="max_occupants" type="number" placeholder="e.g. 2" className="h-9" />
+                    <Input id="max_occupants" name="max_occupants" type="number" defaultValue="2" required className="h-9" />
                   </div>
                 </div>
-
               </div>
-              
-              <DialogFooter>
-                <DialogClose asChild>
-                  <Button variant="outline" className="h-9">Cancel</Button>
-                </DialogClose>
-                <Button type="submit" className="bg-blue-700 hover:bg-blue-800 text-white h-9">Save Room</Button>
-              </DialogFooter>
+                
+                <DialogFooter>
+                  <Button type="button" variant="outline" className="h-9" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={isSubmitting} className="bg-blue-700 hover:bg-blue-800 text-white h-9">
+                    {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                    Save Room
+                  </Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
 
         </div>
       </div>
 
-      {/* 4 Top Metric Cards */}
+      {/* 4 Top Metric Cards (Dynamic dari API) */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card className="bg-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -223,7 +302,9 @@ export default function RoomManagementPage() {
             <Building2 className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 mt-1">142</div>
+            <div className="text-3xl font-bold text-slate-900 mt-1">
+              {summary ? summary.total_rooms : "..."}
+            </div>
           </CardContent>
         </Card>
 
@@ -233,7 +314,9 @@ export default function RoomManagementPage() {
             <DoorClosed className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 mt-1">12</div>
+            <div className="text-3xl font-bold text-slate-900 mt-1">
+              {summary ? summary.vacant_units : "..."}
+            </div>
           </CardContent>
         </Card>
 
@@ -243,7 +326,9 @@ export default function RoomManagementPage() {
             <AlertTriangle className="h-4 w-4 text-amber-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 mt-1">8</div>
+            <div className="text-3xl font-bold text-slate-900 mt-1">
+              {summary ? summary.warnings_count : "..."}
+            </div>
           </CardContent>
         </Card>
 
@@ -253,7 +338,9 @@ export default function RoomManagementPage() {
             <AlertCircle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 mt-1">3</div>
+            <div className="text-3xl font-bold text-slate-900 mt-1">
+              {summary ? summary.critical_count : "..."}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -281,6 +368,7 @@ export default function RoomManagementPage() {
                       key={floor}
                       onClick={() => {
                         setSelectedFloor(floor)
+                        setCurrentPage(1)
                         setIsFloorOpen(false)
                       }}
                       className={`w-full text-left px-4 py-2 text-sm ${selectedFloor === floor ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
@@ -309,6 +397,7 @@ export default function RoomManagementPage() {
                       key={status}
                       onClick={() => {
                         setSelectedStatus(status)
+                        setCurrentPage(1)
                         setIsStatusOpen(false)
                       }}
                       className={`w-full text-left px-4 py-2 text-sm ${selectedStatus === status ? 'bg-slate-100 text-slate-900' : 'text-slate-700 hover:bg-slate-50'}`}
@@ -339,16 +428,19 @@ export default function RoomManagementPage() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search residents..." 
+              placeholder="Search by Room ID or Tenant..." 
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value)
+                setCurrentPage(1)
+              }}
               className="w-full pl-9 pr-4 py-1.5 text-sm border rounded-md outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400"
             />
           </div>
         </CardHeader>
 
         {/* Data Table */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto min-h-[400px]">
           <table className="w-full text-sm text-left">
             <thead className="text-[10px] text-slate-500 uppercase tracking-wider bg-slate-50 border-b">
               <tr>
@@ -361,42 +453,66 @@ export default function RoomManagementPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredData.map((room) => (
-                <tr 
-                  key={room.id} 
-                  onClick={() => router.push(`/admin/residents/${room.id}`)}
-                  className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
-                >
-                  <td className={`px-6 py-4 font-bold ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-900'}`}>
-                    {room.id}
-                  </td>
-                  <td className="px-6 py-4 text-slate-500 font-medium">{room.floor}</td>
-                  <td className="px-6 py-4 font-medium text-slate-900">{room.resident}</td>
-                  <td className={`px-6 py-4 font-medium text-right ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-900'}`}>
-                    {room.kwh}
-                  </td>
-                  <td className={`px-6 py-4 font-medium text-right ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-600'}`}>
-                    {room.cost}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {renderStatusBadge(room.status)}
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-10 text-slate-500">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                    Memuat data kamar...
                   </td>
                 </tr>
-              ))}
+              ) : rooms.length > 0 ? (
+                rooms.map((room) => (
+                  <tr 
+                    key={room.room_id} 
+                    onClick={() => router.push(`/admin/residents/${room.room_id}`)}
+                    className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                  >
+                    <td className={`px-6 py-4 font-bold ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-900'}`}>
+                      {room.room_no}
+                    </td>
+                    <td className="px-6 py-4 text-slate-500 font-medium">{room.floor}</td>
+                    <td className="px-6 py-4 font-medium text-slate-900">{room.resident_name || "-"}</td>
+                    <td className={`px-6 py-4 font-medium text-right ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-900'}`}>
+                      {room.monthly_kwh?.toFixed(1) || 0}
+                    </td>
+                    <td className={`px-6 py-4 font-medium text-right ${room.status === 'Exceeded' ? 'text-red-600' : 'text-slate-600'}`}>
+                      {formatIDR(room.estimated_cost || 0)}
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {renderStatusBadge(room.status)}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="text-center py-10 text-slate-500">
+                    Tidak ada data kamar yang ditemukan.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
         {/* Pagination */}
         <div className="flex items-center justify-between px-6 py-4 border-t text-sm text-slate-500">
-          <div>Showing 1 to {filteredData.length} of {filteredData.length} entries</div>
+          <div>Showing {rooms.length > 0 ? ((currentPage - 1) * 10) + 1 : 0} to {Math.min(currentPage * 10, totalItems)} of {totalItems} entries</div>
           <div className="flex items-center gap-1">
-            <button className="px-3 py-1.5 border rounded text-slate-400 hover:bg-slate-50 bg-white font-medium" disabled>Prev</button>
-            <button className="px-3 py-1.5 border rounded bg-blue-600 text-white font-medium">1</button>
-            <button className="px-3 py-1.5 border rounded hover:bg-slate-50 text-slate-600 bg-white font-medium">2</button>
-            <button className="px-3 py-1.5 border rounded hover:bg-slate-50 text-slate-600 bg-white font-medium">3</button>
-            <span className="px-2">...</span>
-            <button className="px-3 py-1.5 border rounded hover:bg-slate-50 text-slate-600 bg-white font-medium">Next</button>
+            <button 
+              className="px-3 py-1.5 border rounded text-slate-600 hover:bg-slate-50 bg-white font-medium disabled:opacity-50" 
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            >
+              Prev
+            </button>
+            <button className="px-3 py-1.5 border rounded bg-blue-600 text-white font-medium">{currentPage}</button>
+            <button 
+              className="px-3 py-1.5 border rounded hover:bg-slate-50 text-slate-600 bg-white font-medium disabled:opacity-50"
+              disabled={currentPage * 10 >= totalItems}
+              onClick={() => setCurrentPage(p => p + 1)}
+            >
+              Next
+            </button>
           </div>
         </div>
 
