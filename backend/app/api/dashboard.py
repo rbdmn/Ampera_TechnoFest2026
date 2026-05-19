@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models import AlertHistory, ConsumptionLog, MeterReading, Room, RoomOccupancy, User
+from app.services.auth_service import get_current_user, require_admin
 
 router = APIRouter()
 
@@ -50,6 +51,7 @@ def admin_overview(
     end: str | None = Query(default=None, description="ISO datetime, e.g. 2020-01-08T00:00:00Z"),
     interval: str = Query(default="day", pattern="^(hour|day)$"),
     db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
 ) -> dict:
     now = datetime.now(timezone.utc)
     start_dt = _parse_iso_datetime(start) if start else (now - timedelta(days=30))
@@ -166,17 +168,18 @@ def admin_overview(
 
 @router.get("/user/overview")
 def user_overview(
-    email: str | None = Query(default=None, description="User email (MVP auth: passed by frontend)."),
+    email: str | None = Query(default=None, description="User email (admin only: query any user)."),
     start: str | None = Query(default=None, description="ISO datetime"),
     end: str | None = Query(default=None, description="ISO datetime"),
     interval: str = Query(default="day", pattern="^(hour|day)$"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
-    # MVP fallback: if FE doesn't pass email yet, use the first active non-admin user.
-    if not email:
-        user = db.scalar(select(User).where(User.is_active.is_(True)).order_by(User.created_at.asc()).limit(1))
-    else:
+    # Admin can query any user by email; regular user always gets their own data.
+    if current_user.role.value == "admin" and email:
         user = db.scalar(select(User).where(User.email == email))
+    else:
+        user = current_user
     if not user or not user.is_active:
         return {"error": "user_not_found"}
 

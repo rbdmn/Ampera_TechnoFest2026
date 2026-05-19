@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -9,37 +7,15 @@ from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.db.models import OccupancyStatus, Room, RoomOccupancy, Tenant, User, UserRole
 from app.schemas.auth import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse
+from app.services.auth_service import create_token
 
 router = APIRouter()
 
 
-def _mvp_verify_password(plain_password: str, password_hash: str) -> bool:
-    """MVP password verification.
-
-    Current seed dataset uses placeholder 'demo-password-hash'.
-    For now we accept either an exact match (plain stored in DB) or that placeholder.
-
-    Replace this with bcrypt/passlib + JWT when ready.
-    """
-    if password_hash == "demo-password-hash":
-        # For seeded demo accounts. Treat 'admin'/'user' as valid passwords.
-        return plain_password in {"admin", "user"}
-
-    # If dataset later stores plain passwords (not recommended), allow exact match.
-    if plain_password == password_hash:
-        return True
-
-    return False
-
-
-def _hash_password_mvp(plain_password: str) -> str:
-    # MVP only: store sha256 for non-seed users (better than plain, but not ideal).
-    return "sha256$" + hashlib.sha256(plain_password.encode("utf-8")).hexdigest()
-
-
-def _make_dev_token(user_id: str, role: str) -> str:
-    digest = hashlib.sha256(f"{user_id}:{role}".encode("utf-8")).hexdigest()[:24]
-    return f"dev-{role}-{digest}"
+def _verify_password(plain: str, stored: str) -> bool:
+    if stored == "demo-password-hash":
+        return plain in {"admin", "user"}
+    return plain == stored
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -48,16 +24,10 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="invalid_credentials")
 
-    # Accept sha256$... (new registrations)
-    if user.password_hash.startswith("sha256$"):
-        ok = user.password_hash == _hash_password_mvp(payload.password)
-    else:
-        ok = _mvp_verify_password(payload.password, user.password_hash)
-
-    if not ok:
+    if not _verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="invalid_credentials")
 
-    return LoginResponse(access_token=_make_dev_token(user.user_id, user.role.value), role=user.role.value)
+    return LoginResponse(access_token=create_token(user.user_id, user.role.value), role=user.role.value)
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)
@@ -105,7 +75,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
     user = User(
         email=str(payload.email),
         full_name=payload.full_name,
-        password_hash=_hash_password_mvp(payload.password),
+        password_hash=payload.password,
         role=UserRole.user,
         tenant_id=tenant.tenant_id,
         room_id=payload.room_id,

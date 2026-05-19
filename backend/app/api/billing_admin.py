@@ -5,7 +5,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.db.models import BillingRecord, BillingStatus, Room
+from app.db.models import BillingRecord, BillingStatus, Room, User
+from app.services.auth_service import require_admin
 
 router = APIRouter()
 
@@ -14,6 +15,7 @@ router = APIRouter()
 def billing_summary(
     period: str = Query(..., description="YYYY-MM"),
     db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
 ) -> dict:
     total_usage = (
         db.scalar(select(func.coalesce(func.sum(BillingRecord.total_kwh), 0.0)).where(BillingRecord.period == period))
@@ -65,6 +67,7 @@ def list_invoices(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
 ) -> dict:
     offset = (page - 1) * limit
 
@@ -107,6 +110,7 @@ def update_invoice_status(
     invoice_id: str,
     payload: dict,
     db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
 ) -> dict:
     record = db.get(BillingRecord, invoice_id)
     if not record:
@@ -134,7 +138,11 @@ def update_invoice_status(
 
 
 @router.get("/invoices/{invoice_id}")
-def invoice_detail(invoice_id: str, db: Session = Depends(get_db)) -> dict:
+def invoice_detail(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> dict:
     row = db.execute(
         select(
             BillingRecord,

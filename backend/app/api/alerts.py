@@ -7,8 +7,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.db.models import AlertHistory
+from app.db.models import AlertHistory, User
 from app.schemas.alert import AlertOut
+from app.services.auth_service import get_current_user
 
 router = APIRouter()
 
@@ -26,7 +27,11 @@ def get_alerts(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
+    # Regular user can only see alerts for their own room.
+    if current_user.role.value != "admin" and current_user.room_id:
+        room_id = current_user.room_id
     # Map UI type -> our AlertType strings (MVP fallback)
     type_map = {
         "alert": {"usage_warning", "limit_exceeded"},
@@ -71,6 +76,9 @@ def get_alerts(
 
 
 @router.get("/unread-count")
-def unread_count(db: Session = Depends(get_db)) -> dict:
+def unread_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
     unread = db.scalar(select(func.count()).select_from(AlertHistory).where(AlertHistory.is_read.is_(False))) or 0
     return {"unread_count": int(unread)}
