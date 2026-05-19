@@ -60,7 +60,13 @@ export default function NotificationsPage() {
   const [data, setData] = useState<AlertOut[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const email = useMemo(() => getEmail() ?? undefined, [])
+  const [email, setEmail] = useState<string | undefined>(undefined)
+
+useEffect(() => {
+  if (typeof window !== "undefined") {
+    setEmail(getEmail() ?? undefined)
+  }
+}, [])
 
   async function load() {
     try {

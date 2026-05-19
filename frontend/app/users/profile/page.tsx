@@ -31,7 +31,11 @@ export default function UserProfilePage() {
   const [newPw, setNewPw] = useState("")
   const [confirmPw, setConfirmPw] = useState("")
 
-  const email = useMemo(() => getEmail() ?? "", [])
+  const [email, setEmail] = useState("")
+
+useEffect(() => {
+  setEmail(getEmail() ?? "")
+}, [])
 
   async function load() {
     const p = await getMyProfile()

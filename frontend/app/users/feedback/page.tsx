@@ -35,7 +35,11 @@ export default function UserAdminFeedbackPage() {
   const [items, setItems] = useState<FeedbackItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const email = useMemo(() => getEmail() ?? undefined, [])
+  const [email, setEmail] = useState<string | undefined>(undefined)
+
+useEffect(() => {
+  setEmail(getEmail() ?? undefined)
+}, [])
 
   async function load() {
     try {
