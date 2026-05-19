@@ -22,14 +22,17 @@ app.add_middleware(
 
 # --- Routers ---
 from app.api import alerts, auth, billing, consumption, occupancies, rooms, tenants  # noqa: E402
-from app.api import dashboard  # noqa: E402
+from app.api import billing_admin, dashboard, rooms_admin  # noqa: E402
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+# Register admin/static room endpoints first to avoid /{room_id} catching /table, /summary, etc.
+app.include_router(rooms_admin.router, prefix="/rooms", tags=["rooms"])
 app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
 app.include_router(tenants.router, prefix="/tenants", tags=["tenants"])
 app.include_router(occupancies.router, prefix="/occupancies", tags=["occupancies"])
 app.include_router(consumption.router, prefix="/consumption", tags=["consumption"])
 app.include_router(billing.router, prefix="/billing", tags=["billing"])
+app.include_router(billing_admin.router, prefix="/billing", tags=["billing"])
 app.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(agent.router, prefix="/agent", tags=["agent"])

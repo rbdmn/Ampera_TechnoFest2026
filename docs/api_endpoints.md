@@ -6,6 +6,8 @@ Base URL (local): `http://localhost:8000`
 > - Semua endpoint di bawah **dinamis via Postgres + SQLAlchemy**.
 > - Auth masih **MVP (belum JWT)**: `/auth/login` hanya mengembalikan *dev token* (belum dipakai untuk proteksi endpoint).
 > - Dashboard user saat ini identifikasi user menggunakan query param `email` (sementara).
+>   - **Update**: `email` sekarang **optional**. Kalau tidak dikirim, backend memilih user aktif pertama (untuk demo).
+> - `room_id` untuk endpoint legacy `GET /rooms/{room_id}` mengikuti pattern: `R-<...>` (contoh: `R-401`).
 
 ---
 
@@ -112,19 +114,29 @@ Ringkasan dashboard admin (totals + time-series pemakaian listrik).
 ```json
 {
   "range": {"start": "...", "end": "...", "interval": "day"},
-  "totals": {"rooms": 4, "users": 4, "kwh": 123.45},
+  "totals": {
+    "kwh": 12458.2,
+    "estimated_bill": 18245000,
+    "active_rooms": 42,
+    "total_rooms": 50,
+    "users": 45,
+    "active_alerts_count": 3
+  },
+  "top_consumers": [
+    {"room_id": "R-304", "usage_percentage": 92},
+    {"room_id": "R-102", "usage_percentage": 78}
+  ],
   "series": [
-    {"ts": "2020-01-01T00:00:00+00:00", "kwh": 12.3},
-    {"ts": "2020-01-02T00:00:00+00:00", "kwh": 10.8}
+    {"ts": "2020-01-01T00:00:00+00:00", "kwh": 12.3, "peak_demand_kw": 2.1, "status": "Normal"}
   ]
 }
 ```
 
 ### (User) `GET /dashboard/user/overview`
-Ringkasan dashboard user per akun (series pemakaian + latest meter reading).
+Ringkasan dashboard user per akun.
 
 **Query params**
-- `email` (required): email user
+- `email` (optional): email user. Jika tidak dikirim, backend memilih user aktif pertama (demo).
 - `start` (optional): ISO datetime
 - `end` (optional): ISO datetime
 - `interval` (optional): `day` atau `hour`
@@ -132,93 +144,127 @@ Ringkasan dashboard user per akun (series pemakaian + latest meter reading).
 **Response (200)**
 ```json
 {
-  "user": {"user_id": "USR-TEN001", "email": "budi.santoso@ampera.local", "role": "user"},
-  "room": {"room_id": "R-101"},
+  "user": {"user_id": "USR-...", "email": "jane.doe@ampera.com", "role": "user"},
+  "room": {"room_id": "R-101", "tenant_name": "Jane Doe"},
   "range": {"start": "...", "end": "...", "interval": "day"},
-  "totals": {"kwh": 55.2},
-  "series": [{"ts": "...", "kwh": 1.2}],
-  "latest_meter_reading": {
-    "reading_id": "READ-2020-W04-R-101",
-    "room_id": "R-101",
-    "reading_value_kwh": 253.8861,
-    "usage_delta_kwh": 71.0223,
-    "period_start": "2020-01-20T00:00:00+00:00",
-    "period_end": "2020-01-26T23:00:00+00:00",
-    "source": "seed_dataset",
-    "verification_status": "verified"
-  }
+  "totals": {"kwh": 342.5, "bill": 513750},
+  "settings": {"rate_per_kwh": 1500, "monthly_limit_kwh": 500},
+  "projection": {"projected_kwh": 485.2, "projected_bill": 727800},
+  "series": [
+    {"ts": "2020-01-01T00:00:00+00:00", "kwh": 42.5, "peak_demand_kw": 6.2, "status": "High Peak Detected"}
+  ],
+  "latest_meter_reading": null
 }
 ```
+
+Catatan:
+- Jika user tidak punya `room_id` (mis. admin), response akan berisi `room: null`, `totals: null`, dan `series: []`.
 
 ---
 
 ## Rooms
 
 ### `GET /rooms/`
-List semua kamar.
+List semua kamar (raw rooms).
 
-### `GET /rooms/{room_id}`
-Detail kamar.
+### `GET /rooms/table`
+**Endpoint baru (aman, untuk tabel admin)**: list kamar versi tabel dengan join occupant aktif + pemakaian MTD + filter & pagination.
 
-### `GET /rooms/{room_id}/active-occupants`
-Jumlah penghuni aktif + kapasitas.
+**Query params**
+- `floor` (optional): int
+- `status` (optional): `Normal|Warning|Exceeded|Vacant`
+- `search` (optional): cari `room_id` / nama tenant
+- `page` (optional): default 1
+- `limit` (optional): default 10
 
 **Response (200)**
 ```json
-{ "room_id": "R-103", "active_occupants": 1, "max_occupants": 2 }
+{
+  "data": [
+    {
+      "room_no": "101",
+      "room_id": "R-101",
+      "floor": 1,
+      "resident_name": "Jane Doe",
+      "monthly_kwh": 245.5,
+      "estimated_cost": 368200,
+      "status": "Normal"
+    }
+  ],
+  "meta": {"total_items": 142, "current_page": 1}
+}
 ```
 
----
+### `GET /rooms/summary`
+Summary resident management cards.
 
-## Tenants
+**Response (200)**
+```json
+{
+  "total_rooms": 50,
+  "vacant_units": 8,
+  "warnings_count": 6,
+  "critical_count": 2
+}
+```
 
-### `POST /tenants/`
-Buat tenant.
+### `GET /rooms/admin/room-status`
+Quick room status untuk tabel kecil (room_id, tenant_name, kwh_usage_mtd, status).
+
+**Response (200)**
+```json
+{
+  "data": [
+    {"room_id": "R-101", "tenant_name": "Jane Doe", "kwh_usage_mtd": 245.5, "status": "warning"}
+  ]
+}
+```
+
+### `POST /rooms/`
+Create new room.
 
 **Request**
 ```json
-{ "full_name": "Nama", "email": "nama@ampera.com", "phone": "08..." }
+{ "room_no": "401", "floor": 4, "max_occupants": 2 }
 ```
 
-### `GET /tenants/`
-List tenant.
-
----
-
-## Occupancies (riwayat penghuni kamar)
-
-### `POST /occupancies/rooms/{room_id}/checkin`
-Check-in tenant ke kamar.
+### `PATCH /rooms/{room_id}/limit`
+Update limit bulanan kamar.
 
 **Request**
 ```json
-{ "tenant_id": "TEN-001", "start_at": "2020-01-02T00:00:00Z" }
+{ "monthly_limit_kwh": 500 }
 ```
 
-Rules yang di-enforce:
-- 1 tenant hanya boleh punya 1 occupancy aktif
-- room tidak boleh melebihi `rooms.max_occupants`
+### `GET /rooms/{room_id}`
+Detail kamar (raw room).
 
-### `POST /occupancies/occupancies/{occupancy_id}/checkout`
-Check-out/akhiri occupancy.
-
-**Request**
-```json
-{ "end_at": "2020-02-01T00:00:00Z" }
-```
-
-### `GET /occupancies/rooms/{room_id}`
-Riwayat occupancy untuk satu kamar.
+### `GET /rooms/{room_id}/detail`
+Detail kamar yang sudah diperkaya dengan kalkulasi pemakaian bulan berjalan.
 
 ---
 
 ## Consumption
 
 ### `GET /consumption/summary`
-Ringkasan total pemakaian bulan berjalan (berdasarkan data `consumption_logs`).
+Ringkasan total pemakaian bulan berjalan.
 
 ### `GET /consumption/rooms/{room_id}`
-Ambil log konsumsi terbaru untuk kamar.
+Time-series konsumsi per kamar.
+
+**Query params**
+- `interval` (optional): `hour` (default) atau `day`
+- `start` (optional): ISO datetime
+- `end` (optional): ISO datetime
+
+**Response (200)**
+```json
+{
+  "room_id": "R-101",
+  "range": {"start": "...", "end": "...", "interval": "day"},
+  "series": [{"ts": "...", "kwh": 1.2}]
+}
+```
 
 ---
 
@@ -232,12 +278,59 @@ Generate billing records untuk periode tertentu (format `YYYY-MM`).
 { "period": "2020-01" }
 ```
 
+### `GET /billing/summary`
+Billing summary (admin).
+
+**Query params**
+- `period` (required): `YYYY-MM`
+
+Catatan:
+- Jika `period` tidak dikirim, FastAPI akan mengembalikan `422 Field required` (expected).
+
+### `GET /billing/invoices`
+List invoices (admin) + pagination.
+
+**Query params**
+- `period` (required): `YYYY-MM`
+- `page` (optional)
+- `limit` (optional)
+
+Catatan:
+- Jika `period` tidak dikirim, FastAPI akan mengembalikan `422 Field required` (expected).
+
+### `PATCH /billing/invoices/{invoice_id}/status`
+Update status invoice.
+
+**Request**
+```json
+{ "status": "paid" }
+```
+
+### `GET /billing/invoices/{invoice_id}`
+Invoice detail (admin).
+
 ---
 
 ## Alerts
 
 ### `GET /alerts/`
-List alert history.
+List alert history + filter + pagination.
+
+**Query params**
+- `room_id` (optional)
+- `start` (optional): ISO datetime
+- `end` (optional): ISO datetime
+- `type` (optional): `alert|insight|system|all`
+- `page` (optional)
+- `limit` (optional)
+
+Response berformat:
+```json
+{ "data": [], "meta": {"total_items": 0, "unread_count": 0, "current_page": 1} }
+```
+
+### `GET /alerts/unread-count`
+Ambil counter unread alerts.
 
 ---
 

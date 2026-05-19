@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,7 @@ def list_rooms(db: Session = Depends(get_db)) -> list[RoomOut]:
 
 
 @router.get("/{room_id}", response_model=RoomOut)
-def get_room(room_id: str, db: Session = Depends(get_db)) -> RoomOut:
+def get_room(room_id: str = Path(..., pattern=r"^R-[A-Za-z0-9_-]+$"), db: Session = Depends(get_db)) -> RoomOut:
     room = db.get(Room, room_id)
     if not room:
         raise HTTPException(status_code=404, detail="room_not_found")
@@ -25,7 +25,7 @@ def get_room(room_id: str, db: Session = Depends(get_db)) -> RoomOut:
 
 
 @router.get("/{room_id}/active-occupants")
-def active_occupants(room_id: str, db: Session = Depends(get_db)) -> dict:
+def active_occupants(room_id: str = Path(..., pattern=r"^R-[A-Za-z0-9_-]+$"), db: Session = Depends(get_db)) -> dict:
     room = db.get(Room, room_id)
     if not room:
         raise HTTPException(status_code=404, detail="room_not_found")
