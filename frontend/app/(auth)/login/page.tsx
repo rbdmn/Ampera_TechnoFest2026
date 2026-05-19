@@ -38,9 +38,9 @@ export default function LoginPage() {
         return
       }
 
-      setAuth(data.access_token, data.role)
+      setAuth(data.access_token, data.role, email)
       if (data.role === "admin") router.push("/admin/dashboard")
-      else router.push("/user/dashboard")
+      else router.push("/users/dashboard")
     } catch {
       setError("Network error")
     } finally {

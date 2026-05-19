@@ -1,13 +1,19 @@
 export type AuthRole = "admin" | "user"
 
-export function setAuth(token: string, role: AuthRole) {
+export function setAuth(token: string, role: AuthRole, email: string) {
   localStorage.setItem("token", token)
   localStorage.setItem("role", role)
+  localStorage.setItem("email", email)
 }
 
 export function clearAuth() {
   localStorage.removeItem("token")
   localStorage.removeItem("role")
+  localStorage.removeItem("email")
+}
+
+export function getEmail(): string | null {
+  return localStorage.getItem("email")
 }
 
 export function getRole(): AuthRole | null {

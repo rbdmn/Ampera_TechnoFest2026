@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { 
   Zap, 
   BarChart2, 
@@ -15,62 +15,56 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Bar, BarChart, ResponsiveContainer, XAxis, Tooltip } from "recharts"
+import { apiFetch } from "@/lib/api"
+import { getEmail } from "@/lib/auth"
 
-const dailyChartData = [
-  { date: "Sep 15", actual: 45, estimated: 0 },
-  { date: "Sep 16", actual: 52, estimated: 0 },
-  { date: "Sep 17", actual: 38, estimated: 0 },
-  { date: "Sep 18", actual: 40, estimated: 0 },
-  { date: "Sep 19", actual: 65, estimated: 0 },
-  { date: "Sep 20", actual: 70, estimated: 0 },
-  { date: "Sep 21", actual: 68, estimated: 0 },
-  { date: "Sep 22", actual: 42, estimated: 0 },
-  { date: "Sep 23", actual: 45, estimated: 0 },
-  { date: "Sep 24", actual: 48, estimated: 0 },
-  { date: "Sep 25", actual: 55, estimated: 0 },
-  { date: "Sep 26", actual: 85, estimated: 0 },
-  { date: "Sep 27", actual: 75, estimated: 0 },
-  { date: "Sep 28", actual: 40, estimated: 0 },
-  { date: "Sep 29", actual: 35, estimated: 0 },
-  { date: "Sep 30", actual: 45, estimated: 0 },
-  { date: "Oct 01", actual: 48, estimated: 0 },
-  { date: "Oct 02", actual: 58, estimated: 0 },
-  { date: "Oct 03", actual: 60, estimated: 0 },
-  { date: "Oct 04", actual: 55, estimated: 0 },
-  { date: "Oct 05", actual: 45, estimated: 0 },
-  { date: "Oct 06", actual: 62, estimated: 0 },
-  { date: "Oct 07", actual: 58, estimated: 0 },
-  { date: "Oct 08", actual: 68, estimated: 0 },
-  { date: "Oct 09", actual: 45, estimated: 0 },
-  { date: "Oct 10", actual: 0, estimated: 42 },
-  { date: "Oct 11", actual: 0, estimated: 45 },
-  { date: "Oct 12", actual: 0, estimated: 40 },
-  { date: "Oct 13", actual: 0, estimated: 43 },
-  { date: "Oct 14", actual: 0, estimated: 45 },
-]
+interface DashboardSeriesItem {
+  ts: string
+  kwh: number
+}
 
-const monthlyChartData = [
-  { date: "May", actual: 1100, estimated: 0 },
-  { date: "Jun", actual: 1150, estimated: 0 },
-  { date: "Jul", actual: 1280, estimated: 0 },
-  { date: "Aug", actual: 1450, estimated: 0 },
-  { date: "Sep", actual: 1320, estimated: 0 },
-  { date: "Oct", actual: 1245, estimated: 0 },
-]
+interface UserDashboardOverview {
+  user: {
+    user_id: string
+    full_name?: string
+    email: string
+    role: string
+  }
+  room: {
+    room_id: string
+  }
+  range: {
+    start: string
+    end: string
+    interval: string
+  }
+  totals: {
+    kwh: number
+  }
+  series: DashboardSeriesItem[]
+  latest_meter_reading: {
+    reading_id: string
+    room_id: string
+    reading_value_kwh: number
+    usage_delta_kwh: number
+    period_start: string
+    period_end: string
+    source: string
+    verification_status: string
+  }
+}
 
-const dailyLogData = [
-  { date: "Oct 14, 2023", consumption: 42.5, peakDemand: 6.2, status: "High Peak Detected", statusType: "warning" },
-  { date: "Oct 13, 2023", consumption: 38.1, peakDemand: 4.1, status: "Normal", statusType: "normal" },
-  { date: "Oct 12, 2023", consumption: 40.2, peakDemand: 4.5, status: "Normal", statusType: "normal" },
-  { date: "Oct 11, 2023", consumption: 39.8, peakDemand: 4.3, status: "Normal", statusType: "normal" },
-  { date: "Oct 10, 2023", consumption: 68.0, peakDemand: 5.8, status: "Anomalous Usage", statusType: "warning" },
-  { date: "Oct 09, 2023", consumption: 45.0, peakDemand: 4.8, status: "Normal", statusType: "normal" },
-]
+interface ConsumptionLogItem {
+  date: string
+  consumption: number
+  peakDemand: number
+  status: string
+  statusType: "warning" | "normal"
+}
 
-const monthlySummaryData = [
-  { date: "September 2023", consumption: 1320.5, bill: "$158.46" },
-  { date: "August 2023", consumption: 1450.0, bill: "$174.00" },
-  { date: "July 2023", consumption: 1280.2, bill: "$153.62" },
+const defaultChartData = [
+  { date: "Day 1", actual: 0, estimated: 0 },
+  { date: "Day 2", actual: 0, estimated: 0 },
 ]
 
 export default function UserEnergyHistoryPage() {
@@ -79,6 +73,79 @@ export default function UserEnergyHistoryPage() {
   const [filterStatus, setFilterStatus] = useState<"all" | "normal" | "warning">("all")
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false)
   const [isStatusFilterOpen, setIsStatusFilterOpen] = useState(false)
+  
+  // Data fetching states
+  const [overview, setOverview] = useState<UserDashboardOverview | null>(null)
+  const [chartData, setChartData] = useState(defaultChartData)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const email = getEmail()
+    if (!email) {
+      setError("User email tidak ditemukan. Silakan login kembali.")
+      setLoading(false)
+      return
+    }
+
+    const dashboardEmail = email
+
+    async function loadHistory() {
+      try {
+        const res = await apiFetch(`/dashboard/user/overview?email=${encodeURIComponent(dashboardEmail)}`)
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => null)
+          throw new Error(errorData?.detail || "Failed to load history data")
+        }
+
+        const data: UserDashboardOverview = await res.json()
+        setOverview(data)
+
+        // Convert series data to chart format
+        if (data.series.length > 0) {
+          const transformed = data.series.map((item) => ({
+            date: new Date(item.ts).toLocaleDateString(),
+            actual: Math.round(item.kwh * 10) / 10,
+            estimated: 0,
+          }))
+          setChartData(transformed)
+        }
+      } catch (err: any) {
+        setError(err?.message || "Unable to load history")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadHistory()
+  }, [])
+
+  // Calculate metrics from overview data
+  const totalConsumption = overview?.totals.kwh ?? 0
+  const averageDailyUse = overview?.series.length 
+    ? Math.round((totalConsumption / overview.series.length) * 10) / 10 
+    : 0
+  const peakDemand = overview?.series.length 
+    ? Math.round(Math.max(...overview.series.map(s => s.kwh)) * 10) / 10 
+    : 0
+
+  // Convert series data to daily log format
+  const dailyLogData: ConsumptionLogItem[] = (overview?.series ?? [])
+    .map((item) => {
+      const statusType: "warning" | "normal" = item.kwh > 50 ? "warning" : "normal"
+      return {
+        date: new Date(item.ts).toLocaleDateString("en-US", { 
+          year: "numeric", 
+          month: "short", 
+          day: "numeric" 
+        }),
+        consumption: Math.round(item.kwh * 10) / 10,
+        peakDemand: Math.round(item.kwh * 0.15 * 10) / 10,
+        status: item.kwh > 50 ? "High Peak Detected" : "Normal",
+        statusType,
+      }
+    })
+    .reverse()
 
   const getDateRangeLabel = () => {
     if (viewMode === "monthly") {
@@ -92,18 +159,18 @@ export default function UserEnergyHistoryPage() {
   }
 
   const getFilteredChartData = () => {
-    const source = viewMode === "daily" ? dailyChartData : monthlyChartData
     if (dateRange === "7") {
-      return source.slice(0, viewMode === "daily" ? 7 : 3)
+      return chartData.slice(0, 7)
     }
     if (dateRange === "30" && viewMode === "daily") {
-      return source.slice(0, 30)
+      return chartData.slice(0, 30)
     }
-    return source
+    return chartData
   }
 
-  const dailyTableData = dailyLogData.filter((item) => filterStatus === "all" || item.statusType === filterStatus)
-  const monthlyTableData = monthlySummaryData
+  const dailyTableData = dailyLogData.filter(
+    (item) => filterStatus === "all" || item.statusType === filterStatus
+  )
 
   const activeChartData = getFilteredChartData()
   const hasActiveFilters = dateRange !== "30" || filterStatus !== "all"
@@ -114,8 +181,21 @@ export default function UserEnergyHistoryPage() {
     { value: "all", label: "All Time" },
   ]
 
+  if (loading) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center text-slate-600">
+        Loading history data...
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
       
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -193,7 +273,7 @@ export default function UserEnergyHistoryPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold text-slate-900">1,245</span>
+              <span className="text-3xl font-bold text-slate-900">{totalConsumption.toFixed(0)}</span>
               <span className="text-sm font-medium text-slate-500">kWh</span>
             </div>
             <div className="mt-2">
@@ -213,7 +293,7 @@ export default function UserEnergyHistoryPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold text-slate-900">41.5</span>
+              <span className="text-3xl font-bold text-slate-900">{averageDailyUse.toFixed(1)}</span>
               <span className="text-sm font-medium text-slate-500">kWh/day</span>
             </div>
             <p className="text-xs text-slate-500 mt-2 font-medium">Typical range: 35-45 kWh</p>
@@ -228,10 +308,14 @@ export default function UserEnergyHistoryPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-3xl font-bold text-slate-900">6.2</span>
+              <span className="text-3xl font-bold text-slate-900">{peakDemand.toFixed(1)}</span>
               <span className="text-sm font-medium text-slate-500">kW</span>
             </div>
-            <p className="text-xs text-slate-500 mt-2 font-medium">Recorded on Oct 14, 6:00 PM</p>
+            <p className="text-xs text-slate-500 mt-2 font-medium">
+              {overview?.latest_meter_reading 
+                ? `Last reading: ${new Date(overview.latest_meter_reading.period_end).toLocaleDateString()}` 
+                : "No recent data"}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -239,7 +323,9 @@ export default function UserEnergyHistoryPage() {
       {/* Full Width Chart Section */}
       <Card className="bg-white">
         <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
-          <CardTitle className="text-base font-semibold">Last 30 Days Breakdown</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            {viewMode === "daily" ? "Daily Consumption Breakdown" : "Monthly Consumption Breakdown"}
+          </CardTitle>
           <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
             <div className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-full bg-[#0d4ed8]"></span>
@@ -252,31 +338,30 @@ export default function UserEnergyHistoryPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={activeChartData} barGap={0} barCategoryGap={0}>
-                <Tooltip 
-                  cursor={{ fill: '#f1f5f9' }} 
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                />
-                <Bar dataKey="actual" stackId="a" fill="#0d4ed8" />
-                <Bar dataKey="estimated" stackId="a" fill="#dbeafe" />
-                <XAxis 
-                  dataKey="date" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fontSize: 10, fill: '#94a3b8' }} 
-                  tickFormatter={(value) => {
-                    if (viewMode === "monthly") return value;
-                    if (value === 'Sep 15' || value === 'Sep 22' || value === 'Sep 29' || value === 'Oct 06' || value === 'Oct 14') {
-                      return value;
-                    }
-                    return '';
-                  }} 
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {chartData.length > 0 ? (
+            <div className="h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={activeChartData} barGap={0} barCategoryGap={0}>
+                  <Tooltip 
+                    cursor={{ fill: '#f1f5f9' }} 
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Bar dataKey="actual" stackId="a" fill="#0d4ed8" />
+                  <Bar dataKey="estimated" stackId="a" fill="#dbeafe" />
+                  <XAxis 
+                    dataKey="date" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fontSize: 10, fill: '#94a3b8' }} 
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-[250px] w-full flex items-center justify-center text-slate-500">
+              No data available for this period
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -365,19 +450,27 @@ export default function UserEnergyHistoryPage() {
             <table className="w-full text-sm text-left">
               <thead className="text-[10px] text-slate-500 uppercase tracking-wider bg-slate-50/50">
                 <tr>
-                  <th className="px-6 py-4 font-semibold">Month</th>
+                  <th className="px-6 py-4 font-semibold">Period</th>
                   <th className="px-6 py-4 font-semibold text-center">Total Consumption (kWh)</th>
-                  <th className="px-6 py-4 font-semibold text-right">Total Bill</th>
+                  <th className="px-6 py-4 font-semibold text-right">Average Daily</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {monthlyTableData.map((item) => (
-                  <tr key={item.date} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-mono text-xs text-slate-900">{item.date}</td>
-                    <td className="px-6 py-4 text-slate-900 text-center">{item.consumption}</td>
-                    <td className="px-6 py-4 text-blue-600 font-medium text-right">{item.bill}</td>
+                {chartData.length > 0 ? (
+                  <tr className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs text-slate-900">
+                      {overview?.range.start ? new Date(overview.range.start).toLocaleDateString() : "Current"}
+                    </td>
+                    <td className="px-6 py-4 text-slate-900 text-center">{totalConsumption.toFixed(1)}</td>
+                    <td className="px-6 py-4 text-slate-600 text-right">{averageDailyUse.toFixed(1)} kWh</td>
                   </tr>
-                ))}
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-8 text-center text-slate-500">
+                      <p className="font-medium">No monthly data found</p>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useMemo, useState } from "react"
 import { 
   Zap, 
   Banknote, 
@@ -25,9 +26,48 @@ import {
   Pie,
   Cell
 } from "recharts"
+import { apiFetch } from "@/lib/api"
+import { getEmail } from "@/lib/auth"
 
-// Dummy data for Hourly Chart
-const hourlyData = [
+interface DashboardSeriesItem {
+  ts: string
+  kwh: number
+}
+
+interface MeterReading {
+  reading_id: string
+  room_id: string
+  reading_value_kwh: number
+  usage_delta_kwh: number
+  period_start: string
+  period_end: string
+  source: string
+  verification_status: string
+}
+
+interface UserDashboardOverview {
+  user: {
+    user_id: string
+    full_name?: string
+    email: string
+    role: string
+  }
+  room: {
+    room_id: string
+  }
+  range: {
+    start: string
+    end: string
+    interval: string
+  }
+  totals: {
+    kwh: number
+  }
+  series: DashboardSeriesItem[]
+  latest_meter_reading: MeterReading
+}
+
+const defaultHourlyData = [
   { time: "00:00", value: 20 },
   { time: "06:00", value: 55 },
   { time: "12:00", value: 85 },
@@ -35,20 +75,111 @@ const hourlyData = [
   { time: "24:00", value: 45 },
 ]
 
-// Dummy data for Donut Chart
-const limitData = [
-  { name: "Used", value: 72, fill: "#f59e0b" }, // Amber color
-  { name: "Remaining", value: 28, fill: "#f1f5f9" } // Slate-100 color
-]
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function getUserDisplayName(user: UserDashboardOverview["user"] | undefined): string {
+  if (!user) return "Resident"
+  if (user.full_name) return user.full_name
+  // Extract name from email (before @)
+  const emailName = user.email?.split("@")[0]?.replace(/[._-]/g, " ") || "Resident"
+  return emailName.charAt(0).toUpperCase() + emailName.slice(1)
+}
 
 export default function UserDashboardPage() {
+  const [overview, setOverview] = useState<UserDashboardOverview | null>(null)
+  const [chartData, setChartData] = useState(defaultHourlyData)
+  const [loading, setLoading] = useState(true)  
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const email = getEmail()
+    if (!email) {
+      setError("User email tidak ditemukan. Silakan login kembali.")
+      setLoading(false)
+      return
+    }
+
+    const dashboardEmail = email
+
+    async function loadDashboard() {
+      try {
+        const res = await apiFetch(`/dashboard/user/overview?email=${encodeURIComponent(dashboardEmail)}`)
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => null)
+          throw new Error(errorData?.detail || "Failed to load dashboard data")
+        }
+
+        const data: UserDashboardOverview = await res.json()
+        setOverview(data)
+        setChartData(
+          data.series.length > 0
+            ? data.series.map((item) => ({
+                time: new Date(item.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                value: item.kwh,
+              }))
+            : defaultHourlyData,
+        )
+      } catch (err: any) {
+        setError(err?.message || "Unable to load dashboard")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadDashboard()
+  }, [])
+
+  const usageKwh = overview?.totals.kwh ?? 0
+  const billValue = useMemo(() => {
+    if (!overview) return "Rp 512.4K"
+    const ratePerKwh = 500
+    return formatCurrency(Math.round(usageKwh * ratePerKwh))
+  }, [overview, usageKwh])
+
+  const daysRemaining = useMemo(() => {
+    if (!overview) return 12
+    const endDate = new Date(overview.range.end)
+    const diff = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    return diff > 0 ? diff : 0
+  }, [overview])
+
+  const usagePercent = useMemo(() => {
+    if (!overview) return 72
+    return Math.min(100, Math.round((usageKwh / 500) * 100))
+  }, [overview, usageKwh])
+
+  if (loading) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center text-slate-600">
+        Loading dashboard...
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
       
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Welcome back, Resident</h1>
-        <p className="text-sm text-slate-500 mt-1">Here is your energy consumption overview for this billing cycle.</p>
+        <h1 className="text-2xl font-bold text-slate-900">
+          Welcome back, {getUserDisplayName(overview?.user)}
+        </h1>
+        <p className="text-sm text-slate-500 mt-1">
+          {overview?.room.room_id 
+            ? `Energy consumption overview for room ${overview.room.room_id}.` 
+            : "Here is your energy consumption overview for this billing cycle."}
+        </p>
       </div>
 
       {/* Top 3 Metric Cards */}
@@ -63,7 +194,7 @@ export default function UserDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-3xl font-bold text-slate-900">342.5</span>
+              <span className="text-3xl font-bold text-slate-900">{usageKwh.toFixed(1)}</span>
               <span className="text-sm font-medium text-slate-500">kWh</span>
             </div>
             <p className="text-xs text-blue-600 font-medium flex items-center mt-2">
@@ -80,7 +211,7 @@ export default function UserDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-3xl font-bold text-slate-900">Rp 512.4K</span>
+              <span className="text-3xl font-bold text-slate-900">{billValue}</span>
             </div>
             <p className="text-xs text-slate-500 mt-2">
               Based on current usage rate
@@ -96,12 +227,11 @@ export default function UserDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1 mt-1 mb-3">
-              <span className="text-3xl font-bold text-slate-900">12</span>
+              <span className="text-3xl font-bold text-slate-900">{daysRemaining}</span>
               <span className="text-sm font-medium text-slate-500">Days</span>
             </div>
-            {/* Progress Bar */}
             <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-600 rounded-full" style={{ width: '60%' }}></div>
+              <div className="h-full bg-blue-600 rounded-full" style={{ width: `${usagePercent}%` }}></div>
             </div>
           </CardContent>
         </Card>
@@ -113,14 +243,11 @@ export default function UserDashboardPage() {
         <Card className="md:col-span-2 bg-white shadow-sm border-slate-200">
           <CardHeader className="flex flex-row items-center justify-between pb-4">
             <CardTitle className="text-sm font-semibold">Hourly Consumption Today</CardTitle>
-            <Button variant="outline" size="sm" className="h-7 text-[10px] uppercase font-bold tracking-wider text-slate-500">
-              Export
-            </Button>
           </CardHeader>
           <CardContent>
             <div className="h-[220px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={hourlyData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
@@ -162,7 +289,10 @@ export default function UserDashboardPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={limitData}
+                    data={[
+                      { name: "Used", value: usagePercent, fill: "#f59e0b" },
+                      { name: "Remaining", value: 100 - usagePercent, fill: "#f1f5f9" },
+                    ]}
                     cx="50%"
                     cy="50%"
                     innerRadius={60}
@@ -172,7 +302,10 @@ export default function UserDashboardPage() {
                     dataKey="value"
                     stroke="none"
                   >
-                    {limitData.map((entry, index) => (
+                    {[
+                      { name: "Used", value: usagePercent, fill: "#f59e0b" },
+                      { name: "Remaining", value: 100 - usagePercent, fill: "#f1f5f9" },
+                    ].map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
                   </Pie>
