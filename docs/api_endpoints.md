@@ -55,6 +55,47 @@ Login untuk admin/user (berdasarkan tabel `users`).
 Password rule (sementara untuk seed dataset):
 - Jika `password_hash` di DB = `demo-password-hash`, maka password yang diterima: `admin` atau `user`.
 
+### `POST /auth/register`
+Registrasi akun user (buat **Tenant** + **User**) dan mengaitkan ke `room_id`.
+
+Catatan:
+- Endpoint ini untuk role **user** saja (admin dibuat via seed).
+- Akan membuat `room_occupancies` aktif jika belum ada.
+- Validasi:
+  - `password` harus sama dengan `confirm_password`
+  - email tidak boleh sudah terdaftar di `users`
+  - `room_id` harus ada
+  - kapasitas `rooms.max_occupants` tidak boleh penuh
+
+**Request**
+```json
+{
+  "full_name": "Jane Doe",
+  "room_id": "R-101",
+  "email": "jane.doe@ampera.com",
+  "password": "rahasia123",
+  "confirm_password": "rahasia123"
+}
+```
+
+**Response (201)**
+```json
+{
+  "user_id": "USR-...",
+  "tenant_id": "TEN-...",
+  "room_id": "R-101",
+  "email": "jane.doe@ampera.com",
+  "role": "user"
+}
+```
+
+**Error umum**
+- `409 email_already_registered`
+- `404 room_not_found`
+- `409 room_is_full`
+- `409 tenant_already_has_active_room`
+- `422 password_mismatch`
+
 ---
 
 ## Dashboard
