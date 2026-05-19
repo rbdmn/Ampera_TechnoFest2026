@@ -1,6 +1,6 @@
-==========================================================
+=========================================================
 SETUP DATABASE POSTGRESQL
-==========================================================
+=========================================================
 
 Berikut langkah setup PostgreSQL untuk project ini di Windows.
 
@@ -13,7 +13,7 @@ Berikut langkah setup PostgreSQL untuk project ini di Windows.
 
   Lalu di prompt PostgreSQL:
 
-  CREATE DATABASE dayarukun;
+  CREATE DATABASE ampera_v2;
   \q
 
   Kalau mau pakai nama ampera, boleh juga, tapi sesuaikan .env.
@@ -47,22 +47,40 @@ Berikut langkah setup PostgreSQL untuk project ini di Windows.
   DB tables created
 
   5. Generate CSV Processed
-  Balik ke root repo:
+
+  Ada 2 opsi:
+
+  OPSI A — Data sintetik terbaru (2020-01 s.d. 2026-05, RECOMMENDED):
+  Balik ke root repo, lalu jalankan:
 
   cd ..
-  python data\preprocess.py
+  python data\generate_synthetic.py
 
+  Output akan tersimpan di data/processed_new/.
   Harus muncul row count seperti:
 
-  rooms: 10
-  tenants: 12
-  room_occupancies: 12
-  users: 13
-  ...
+  Output directory: ...\data\processed_new
+  - rooms: 10 rows
+  - tenants: 12 rows
+  - room_occupancies: 12 rows
+  - users: 13 rows
+  - consumption_logs: 562320 rows
+  - meter_readings: 3350 rows
+  - billing_records: 770 rows
+  - alert_history: 1540 rows
+
+  OPSI B — Data OPSD lama (2015-2019):
+  python data\preprocess.py
+
+  Catatan: data OPSD sudah tidak relevan (tahun 2015-2019).
+  Disarankan pakai OPSI A.
 
   6. Seed ke PostgreSQL
-  Dari root repo:
 
+  OPSI A (data sintetik baru):
+  python backend\data\seed.py --clear --processed-dir data\processed_new
+
+  OPSI B (data OPSD lama):
   python backend\data\seed.py --clear
 
   Kalau berhasil, akan muncul daftar tabel dan jumlah row yang masuk.
@@ -90,7 +108,7 @@ Berikut langkah setup PostgreSQL untuk project ini di Windows.
   consumption_logs > 0
   alert_history > 0
 
-  Urutan Ringkas
+  Urutan Ringkas (RECOMMENDED — Data Sintetik 2020-2026)
 
   Copy-Item backend\.env.example backend\.env
   # edit DATABASE_URL
@@ -100,25 +118,26 @@ Berikut langkah setup PostgreSQL untuk project ini di Windows.
   python -m app.db.init_db
 
   cd ..
-  python data\preprocess.py
-  python backend\data\seed.py --clear
-  python backend\app\agent\test_run.p
+  python data\generate_synthetic.py
+  python backend\data\seed.py --clear --processed-dir data\processed_new
+  python backend\app\agent\test_run.py
 
-==========================================================
+=========================================================
 START BACKEND
-==========================================================
+=========================================================
 Pastiin dah download ollama dan udah download model gpt-oss:120b-cloud
 
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
-==========================================================
-START BACKEND
-==========================================================
+=========================================================
+START FRONTEND
+=========================================================
 Pastiin dah download next atau node js terbaru
 
+cd frontend
 npm run dev
 
-==========================================================
+=========================================================
 START VENV
-==========================================================
+=========================================================
 venv\Scripts\activate
