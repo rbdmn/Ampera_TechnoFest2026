@@ -32,6 +32,7 @@ DEFAULT_OUTPUT_DIR = ROOT_DIR / "data" / "processed"
 DEFAULT_TARIFF_PER_KWH = 1444.70
 DEFAULT_MONTHLY_LIMIT_KWH = 50.0
 DEFAULT_ROOM_COUNT = 10
+EMAIL_DOMAIN = "ampera.com"
 
 
 @dataclass(frozen=True)
@@ -138,7 +139,7 @@ def build_rooms(columns: list[str], room_count: int, tariff: float, limit: float
                 room_id=f"R-{room_number}",
                 floor=1 if index <= 5 else 2,
                 tenant_name=names[(index - 1) % len(names)],
-                tenant_email=f"{tenant_slug}@ampera.local",
+                tenant_email=f"{tenant_slug}@{EMAIL_DOMAIN}",
                 max_occupants=max_occupants,
                 monthly_limit_kwh=limit,
                 tariff_per_kwh=tariff,
@@ -159,7 +160,7 @@ def build_tenants(rooms: list[RoomProfile]) -> list[TenantProfile]:
             else:
                 full_name = f"{room.tenant_name} {occupant_index}"
                 local_part = room.tenant_email.split("@", maxsplit=1)[0]
-                email = f"{local_part}.{occupant_index}@ampera.local"
+                email = f"{local_part}.{occupant_index}@{EMAIL_DOMAIN}"
 
             tenants.append(
                 TenantProfile(
@@ -264,7 +265,7 @@ def build_static_rows(
         0,
         {
             "user_id": "USR-ADMIN",
-            "email": "admin@ampera.local",
+            "email": f"admin@{EMAIL_DOMAIN}",
             "full_name": "Admin Pengelola",
             "password_hash": "demo-password-hash",
             "role": "admin",

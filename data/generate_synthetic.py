@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import math
 import random
 from collections import defaultdict
@@ -24,6 +25,7 @@ TARIFF_PER_KWH = 1444.70
 MONTHLY_LIMIT_KWH = 50.0
 ROOM_COUNT = 10
 START_DATE = datetime(2020, 1, 1, tzinfo=timezone.utc)
+EMAIL_DOMAIN = "ampera.com"
 
 ROOM_NAMES = [
     "Budi Santoso",
@@ -100,7 +102,7 @@ def build_rooms() -> list[RoomProfile]:
                 room_id=f"R-{room_number}",
                 floor=1 if i < 5 else 2,
                 tenant_name=name,
-                tenant_email=f"{slug}@ampera.local",
+                tenant_email=f"{slug}@{EMAIL_DOMAIN}",
                 max_occupants=max_occ,
                 monthly_limit_kwh=MONTHLY_LIMIT_KWH,
                 tariff_per_kwh=TARIFF_PER_KWH,
@@ -121,7 +123,7 @@ def build_tenants(rooms: list[RoomProfile]) -> list[TenantProfile]:
             else:
                 full_name = f"{room.tenant_name} {occ_idx}"
                 local_part = room.tenant_email.split("@", maxsplit=1)[0]
-                email = f"{local_part}.{occ_idx}@ampera.local"
+                email = f"{local_part}.{occ_idx}@{EMAIL_DOMAIN}"
             tenants.append(
                 TenantProfile(
                     tenant_id=f"TEN-{counter:03d}",
@@ -138,7 +140,9 @@ def build_tenants(rooms: list[RoomProfile]) -> list[TenantProfile]:
 
 def hourly_consumption(room: RoomProfile, dt: datetime) -> float:
     """Generate a realistic hourly kWh value based on time patterns."""
-    random.seed(hash((room.room_id, dt)))
+    seed_material = f"{room.room_id}|{dt.isoformat()}".encode("utf-8")
+    seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], "big")
+    rng = random.Random(seed)
     hour = dt.hour
     weekday = dt.weekday()
     month = dt.month
@@ -175,12 +179,12 @@ def hourly_consumption(room: RoomProfile, dt: datetime) -> float:
     else:
         season_mult = 0.95
 
-    noise = random.uniform(0.75, 1.25)
+    noise = rng.uniform(0.75, 1.25)
 
     kwh = base * shared_mult * tod_mult * weekend_mult * season_mult * noise
 
-    if random.random() < 0.008:
-        kwh *= random.uniform(3.0, 6.0)
+    if rng.random() < 0.008:
+        kwh *= rng.uniform(3.0, 6.0)
 
     kwh = max(kwh, 0.01)
     return round(kwh, 4)
@@ -249,7 +253,7 @@ def generate_data(
 
     user_rows.insert(0, {
         "user_id": "USR-ADMIN",
-        "email": "admin@ampera.local",
+        "email": f"admin@{EMAIL_DOMAIN}",
         "full_name": "Admin Pengelola",
         "password_hash": "demo-password-hash",
         "role": "admin",

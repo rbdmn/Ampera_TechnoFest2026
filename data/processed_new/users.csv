@@ -1,14 +1,14 @@
 user_id,email,full_name,password_hash,role,tenant_id,room_id,is_active,created_at
-USR-ADMIN,admin@ampera.local,Admin Pengelola,demo-password-hash,admin,,,True,2020-01-01T00:00:00Z
-USR-TEN001,budi.santoso@ampera.local,Budi Santoso,demo-password-hash,user,TEN-001,R-101,True,2020-01-01T00:00:00Z
-USR-TEN002,siti.aminah@ampera.local,Siti Aminah,demo-password-hash,user,TEN-002,R-102,True,2020-01-01T00:00:00Z
-USR-TEN003,rizky.pratama@ampera.local,Rizky Pratama,demo-password-hash,user,TEN-003,R-103,True,2020-01-01T00:00:00Z
-USR-TEN004,rizky.pratama.2@ampera.local,Rizky Pratama 2,demo-password-hash,user,TEN-004,R-103,True,2020-01-01T00:00:00Z
-USR-TEN005,dewi.lestari@ampera.local,Dewi Lestari,demo-password-hash,user,TEN-005,R-104,True,2020-01-01T00:00:00Z
-USR-TEN006,andi.wijaya@ampera.local,Andi Wijaya,demo-password-hash,user,TEN-006,R-105,True,2020-01-01T00:00:00Z
-USR-TEN007,maya.putri@ampera.local,Maya Putri,demo-password-hash,user,TEN-007,R-106,True,2020-01-01T00:00:00Z
-USR-TEN008,fajar.nugroho@ampera.local,Fajar Nugroho,demo-password-hash,user,TEN-008,R-107,True,2020-01-01T00:00:00Z
-USR-TEN009,fajar.nugroho.2@ampera.local,Fajar Nugroho 2,demo-password-hash,user,TEN-009,R-107,True,2020-01-01T00:00:00Z
-USR-TEN010,nadia.rahma@ampera.local,Nadia Rahma,demo-password-hash,user,TEN-010,R-108,True,2020-01-01T00:00:00Z
-USR-TEN011,agus.saputra@ampera.local,Agus Saputra,demo-password-hash,user,TEN-011,R-109,True,2020-01-01T00:00:00Z
-USR-TEN012,lina.kartika@ampera.local,Lina Kartika,demo-password-hash,user,TEN-012,R-110,True,2020-01-01T00:00:00Z
+USR-ADMIN,admin@ampera.com,Admin Pengelola,demo-password-hash,admin,,,True,2020-01-01T00:00:00Z
+USR-TEN001,budi.santoso@ampera.com,Budi Santoso,demo-password-hash,user,TEN-001,R-101,True,2020-01-01T00:00:00Z
+USR-TEN002,siti.aminah@ampera.com,Siti Aminah,demo-password-hash,user,TEN-002,R-102,True,2020-01-01T00:00:00Z
+USR-TEN003,rizky.pratama@ampera.com,Rizky Pratama,demo-password-hash,user,TEN-003,R-103,True,2020-01-01T00:00:00Z
+USR-TEN004,rizky.pratama.2@ampera.com,Rizky Pratama 2,demo-password-hash,user,TEN-004,R-103,True,2020-01-01T00:00:00Z
+USR-TEN005,dewi.lestari@ampera.com,Dewi Lestari,demo-password-hash,user,TEN-005,R-104,True,2020-01-01T00:00:00Z
+USR-TEN006,andi.wijaya@ampera.com,Andi Wijaya,demo-password-hash,user,TEN-006,R-105,True,2020-01-01T00:00:00Z
+USR-TEN007,maya.putri@ampera.com,Maya Putri,demo-password-hash,user,TEN-007,R-106,True,2020-01-01T00:00:00Z
+USR-TEN008,fajar.nugroho@ampera.com,Fajar Nugroho,demo-password-hash,user,TEN-008,R-107,True,2020-01-01T00:00:00Z
+USR-TEN009,fajar.nugroho.2@ampera.com,Fajar Nugroho 2,demo-password-hash,user,TEN-009,R-107,True,2020-01-01T00:00:00Z
+USR-TEN010,nadia.rahma@ampera.com,Nadia Rahma,demo-password-hash,user,TEN-010,R-108,True,2020-01-01T00:00:00Z
+USR-TEN011,agus.saputra@ampera.com,Agus Saputra,demo-password-hash,user,TEN-011,R-109,True,2020-01-01T00:00:00Z
+USR-TEN012,lina.kartika@ampera.com,Lina Kartika,demo-password-hash,user,TEN-012,R-110,True,2020-01-01T00:00:00Z

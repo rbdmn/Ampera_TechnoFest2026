@@ -1,11 +1,11 @@
 room_id,floor,tenant_name,tenant_email,monthly_limit_kwh,tariff_per_kwh,max_occupants,created_at
-R-101,1,Budi Santoso,budi.santoso@ampera.local,50.0000,1444.7000,1,2020-01-01T00:00:00Z
-R-102,1,Siti Aminah,siti.aminah@ampera.local,50.0000,1444.7000,1,2020-01-01T00:00:00Z
-R-103,1,Rizky Pratama,rizky.pratama@ampera.local,50.0000,1444.7000,2,2020-01-01T00:00:00Z
-R-104,1,Dewi Lestari,dewi.lestari@ampera.local,50.0000,1444.7000,1,2020-01-01T00:00:00Z
-R-105,1,Andi Wijaya,andi.wijaya@ampera.local,50.0000,1444.7000,1,2020-01-01T00:00:00Z
-R-106,2,Maya Putri,maya.putri@ampera.local,50.0000,1444.7000,1,2020-01-01T00:00:00Z
-R-107,2,Fajar Nugroho,fajar.nugroho@ampera.local,50.0000,1444.7000,2,2020-01-01T00:00:00Z
-R-108,2,Nadia Rahma,nadia.rahma@ampera.local,50.0000,1444.7000,1,2020-01-01T00:00:00Z
-R-109,2,Agus Saputra,agus.saputra@ampera.local,50.0000,1444.7000,1,2020-01-01T00:00:00Z
-R-110,2,Lina Kartika,lina.kartika@ampera.local,50.0000,1444.7000,1,2020-01-01T00:00:00Z
+R-101,1,Budi Santoso,budi.santoso@ampera.com,50.0000,1444.7000,1,2020-01-01T00:00:00Z
+R-102,1,Siti Aminah,siti.aminah@ampera.com,50.0000,1444.7000,1,2020-01-01T00:00:00Z
+R-103,1,Rizky Pratama,rizky.pratama@ampera.com,50.0000,1444.7000,2,2020-01-01T00:00:00Z
+R-104,1,Dewi Lestari,dewi.lestari@ampera.com,50.0000,1444.7000,1,2020-01-01T00:00:00Z
+R-105,1,Andi Wijaya,andi.wijaya@ampera.com,50.0000,1444.7000,1,2020-01-01T00:00:00Z
+R-106,2,Maya Putri,maya.putri@ampera.com,50.0000,1444.7000,1,2020-01-01T00:00:00Z
+R-107,2,Fajar Nugroho,fajar.nugroho@ampera.com,50.0000,1444.7000,2,2020-01-01T00:00:00Z
+R-108,2,Nadia Rahma,nadia.rahma@ampera.com,50.0000,1444.7000,1,2020-01-01T00:00:00Z
+R-109,2,Agus Saputra,agus.saputra@ampera.com,50.0000,1444.7000,1,2020-01-01T00:00:00Z
+R-110,2,Lina Kartika,lina.kartika@ampera.com,50.0000,1444.7000,1,2020-01-01T00:00:00Z
