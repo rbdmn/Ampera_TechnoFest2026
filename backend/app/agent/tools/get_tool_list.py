@@ -38,6 +38,10 @@ TOOL_DEFINITIONS = [
         "name": "compare_rooms",
         "description": "Bandingkan beberapa kamar berdasarkan kWh, tagihan, atau pemakaian per orang.",
     },
+    {
+        "name": "get_end_of_day_report",
+        "description": "Buat laporan akhir hari dari data konsumsi terbaru yang tersedia.",
+    },
 ]
 
 

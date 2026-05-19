@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
+
+from langchain_core.callbacks import StdOutCallbackHandler
 
 from app.agent.prompts import AGENT_SYSTEM_PROMPT, PERSONA
 from app.agent.tools.calculate_bill import calculate_bill
@@ -10,12 +13,46 @@ from app.config import get_settings
 
 DEFAULT_TARIFF_IDR = 1444.7
 HIGH_USAGE_KWH = 25.0
+logger = logging.getLogger("ampera.agent")
+_LANGCHAIN_DEBUG_ENABLED = False
+
+
+def _enable_langchain_debug() -> None:
+    global _LANGCHAIN_DEBUG_ENABLED
+    if _LANGCHAIN_DEBUG_ENABLED:
+        return
+
+    try:
+        from langchain.globals import set_debug, set_verbose
+
+        set_debug(True)
+        set_verbose(True)
+        _LANGCHAIN_DEBUG_ENABLED = True
+        logger.info("LangChain debug/verbose mode enabled.")
+    except Exception as exc:
+        logger.info("Unable to enable LangChain globals debug mode: %s", exc)
+
+
+def configure_agent_console_logging() -> None:
+    """Make sure agent logs are visible in the backend console."""
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s"))
+        root_logger.addHandler(handler)
+    root_logger.setLevel(logging.INFO)
+    logging.getLogger("ampera.agent").setLevel(logging.INFO)
+    logging.getLogger("ampera.agent.chat").setLevel(logging.INFO)
+    logging.getLogger("langchain").setLevel(logging.INFO)
+    logging.getLogger("langchain_ollama").setLevel(logging.INFO)
+    logger.info("Agent console logging configured.")
 
 
 def build_llm():
     """Create the LangChain chat model used by the agent foundation."""
     from langchain_ollama import ChatOllama
 
+    _enable_langchain_debug()
     settings = get_settings()
     client_kwargs = {}
     if settings.ollama_api_key:
@@ -27,6 +64,9 @@ def build_llm():
         model=settings.ollama_model,
         base_url=settings.ollama_base_url,
         temperature=settings.ollama_temperature,
+        verbose=True,
+        callbacks=[StdOutCallbackHandler()],
+        tags=["ampera-ai", "ollama"],
         client_kwargs=client_kwargs,
     )
 
@@ -90,6 +130,10 @@ def _db_agent_loop(tariff: float, dry_run: bool = False) -> dict[str, object]:
             room.room_id: float(room.tariff_per_kwh or tariff)
             for room in rooms
         }
+        limit_by_room = {
+            room.room_id: float(room.monthly_limit_kwh)
+            for room in rooms
+        }
     finally:
         db.close()
 
@@ -99,44 +143,94 @@ def _db_agent_loop(tariff: float, dry_run: bool = False) -> dict[str, object]:
     total_latest_kwh = 0.0
     total_estimated_bill = 0.0
 
+    logger.info(
+        "[AGENT] DB loop started | rooms=%s | dry_run=%s | tariff=%.2f",
+        len(room_ids),
+        dry_run,
+        tariff,
+    )
+
     for room_id in room_ids:
         try:
+            logger.info("[AGENT][OBSERVE] room=%s", room_id)
             consumption = query_consumption(room_id=room_id, limit=168)
             logs = consumption.get("logs", [])
             latest_kwh = float(logs[0]["kwh_used"]) if logs else 0.0
             cumulative_kwh = float(logs[0]["cumulative_kwh_month"]) if logs else 0.0
             room_tariff = tariff_by_room.get(room_id, tariff)
+            room_limit = limit_by_room.get(room_id)
+            logger.info(
+                "[AGENT][THINK] room=%s latest=%.4f cumulative=%.4f limit=%.2f tariff=%.2f",
+                room_id,
+                latest_kwh,
+                cumulative_kwh,
+                room_limit or 0.0,
+                room_tariff,
+            )
             estimated_bill = calculate_bill(total_kwh=cumulative_kwh, tariff=room_tariff)
-            analysis = analyze_pattern(room_id=room_id)
+            analysis = analyze_pattern(room_id=room_id, monthly_limit_kwh=room_limit)
+
+            logger.info(
+                "[AGENT][PLAN] room=%s anomaly=%s alert=%s time_pattern=%s",
+                room_id,
+                analysis.get("is_anomaly"),
+                analysis.get("limit_alert_type"),
+                analysis.get("time_pattern"),
+            )
 
             total_latest_kwh += latest_kwh
             total_estimated_bill += estimated_bill
 
             notification: dict[str, str] | None = None
+            alert_type = None
+            message = None
+
             if analysis.get("is_anomaly"):
                 latest = analysis.get("latest_kwh", 0)
                 mean_val = analysis.get("mean_kwh", 0)
+                alert_type = "anomaly"
                 message = (
                     f"Kamar {room_id} lagi boros nih! "
                     f"Pemakaian terbaru {latest:.1f} kWh — jauh di atas rata-rata ({mean_val:.1f} kWh). "
                     "Coba cek apakah ada AC atau dispenser yang nyala terus."
                 )
+
+            limit_alert = analysis.get("limit_alert_type")
+            pct = analysis.get("pct_of_limit", 0)
+            if limit_alert == "limit_exceeded":
+                alert_type = "limit_exceeded"
+                message = (
+                    f"Kamar {room_id} sudah melewati batas bulanan! "
+                    f"Pemakaian {cumulative_kwh:.1f} kWh dari limit {room_limit:.0f} kWh ({pct}%). "
+                    "Segera cek dan hemat pemakaian."
+                )
+            elif limit_alert == "usage_warning":
+                alert_type = "usage_warning"
+                message = (
+                    f"Kamar {room_id} sudah mencapai {pct}% batas bulanan "
+                    f"({cumulative_kwh:.1f} kWh dari {room_limit:.0f} kWh). "
+                    "Mulai hemat agar tidak over limit."
+                )
+
+            if alert_type and message:
+                logger.info("[AGENT][ACT] room=%s alert_type=%s", room_id, alert_type)
                 if dry_run:
                     notification = {
                         "status": "dry_run",
                         "room_id": room_id,
-                        "alert_type": "anomaly",
+                        "alert_type": alert_type,
                         "message": message,
                     }
                 else:
                     notification = send_notification(
                         room_id=room_id,
                         message=message,
-                        alert_type="anomaly",
+                        alert_type=alert_type,
                     )
                     if "send_notification" not in tools_used:
                         tools_used.append("send_notification")
                 notification_logs.append(notification)
+                logger.info("[AGENT][EVALUATE] room=%s notification=%s", room_id, notification)
 
             room_results.append(
                 {
@@ -149,6 +243,7 @@ def _db_agent_loop(tariff: float, dry_run: bool = False) -> dict[str, object]:
                 }
             )
         except Exception as exc:
+            logger.exception("[AGENT] room=%s error", room_id)
             room_results.append(
                 {
                     "room_id": room_id,
@@ -169,6 +264,13 @@ def _db_agent_loop(tariff: float, dry_run: bool = False) -> dict[str, object]:
         "notification_logs": notification_logs,
     }
 
+    logger.info(
+        "[AGENT] DB loop finished | total_latest_kwh=%.4f | estimated_bill=%.2f | notifications=%s",
+        total_latest_kwh,
+        total_estimated_bill,
+        len(notification_logs),
+    )
+
 
 def build_llm_resolution(agent_result: dict[str, object]) -> dict[str, object]:
     """Ask Ollama to produce the final operational resolution from DB tool output."""
@@ -188,6 +290,14 @@ def build_llm_resolution(agent_result: dict[str, object]) -> dict[str, object]:
                 "analysis_status": analysis.get("status"),
                 "z_score": analysis.get("z"),
                 "is_anomaly": analysis.get("is_anomaly"),
+                "time_pattern": analysis.get("time_pattern"),
+                "time_pattern_detail": analysis.get("time_pattern_detail"),
+                "peak_hours": analysis.get("peak_hours"),
+                "avg_night_kwh": analysis.get("avg_night_kwh"),
+                "daily_trend": analysis.get("daily_trend"),
+                "daily_trend_ratio": analysis.get("daily_trend_ratio"),
+                "pct_of_limit": analysis.get("pct_of_limit"),
+                "limit_alert_type": analysis.get("limit_alert_type"),
                 "notification": item.get("notification"),
             }
         )
@@ -208,6 +318,7 @@ def build_llm_resolution(agent_result: dict[str, object]) -> dict[str, object]:
         "Kamu baru saja selesai ngecek semua kamar. Berikut data ringkasan hasil kerjanya.\n"
         "Jelaskan ke admin dalam bahasa Indonesia yang santai dan ramah:\n"
         "- Kamar mana saja yang perlu perhatian dan kenapa\n"
+        "- Kalau ada pola waktu, sebutkan jam puncak, spike dini hari, atau tren harian naik\n"
         "- Ada berapa notifikasi yang dibuat/direncanakan\n"
         "- Estimasi tagihan gedung saat ini\n"
         "JANGAN pake istilah teknis (z-score, standar deviasi, anomaly).\n"
@@ -262,6 +373,7 @@ def run_ampera_agent(
     try:
         result = _db_agent_loop(active_tariff, dry_run=dry_run)
     except Exception as exc:
+        logger.exception("[AGENT] DB loop failed, switching to mock fallback")
         result = _mock_agent_loop(active_tariff)
         result["mode"] = "mock_fallback"
         result["db_error"] = str(exc)
@@ -277,6 +389,6 @@ async def chat_with_agent(message: str) -> str:
     return "Halo! Ada yang bisa saya bantu terkait listrik kos?"
 
 
-async def run_agent_loop() -> dict[str, object]:
+def run_agent_loop() -> dict[str, object]:
     """Compatibility wrapper for the scheduler/API import."""
     return run_ampera_agent()

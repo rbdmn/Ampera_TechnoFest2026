@@ -11,5 +11,10 @@ def start_scheduler() -> None:
     if not settings.enable_scheduler or scheduler.running:
         return
 
-    scheduler.add_job(run_agent_loop, "interval", hours=1, id="agent_loop", replace_existing=True)
+    scheduler.add_job(run_agent_loop, "interval", minutes=5, id="agent_loop", replace_existing=True)
     scheduler.start()
+
+
+def stop_scheduler() -> None:
+    if scheduler.running:
+        scheduler.shutdown(wait=False)

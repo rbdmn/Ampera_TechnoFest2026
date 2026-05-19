@@ -43,7 +43,7 @@ const suggestedQuestions = [
     desc: "Pakai compare_rooms untuk ranking kamar."
   },
   {
-    title: "Hitung total tagihan April",
+    title: "Hitung total tagihan Mei",
     desc: "Pakai get_billing_summary dan calculate_bill."
   },
   {
