@@ -1,13 +1,13 @@
 tenant_id,email,full_name,phone,created_at
-TEN-001,budi.santoso@ampera.com,Budi Santoso,+6281200000001,2020-01-01T00:00:00Z
-TEN-002,siti.aminah@ampera.com,Siti Aminah,+6281200000002,2020-01-01T00:00:00Z
-TEN-003,rizky.pratama@ampera.com,Rizky Pratama,+6281200000003,2020-01-01T00:00:00Z
-TEN-004,rizky.pratama.2@ampera.com,Rizky Pratama 2,+6281200000004,2020-01-01T00:00:00Z
-TEN-005,dewi.lestari@ampera.com,Dewi Lestari,+6281200000005,2020-01-01T00:00:00Z
-TEN-006,andi.wijaya@ampera.com,Andi Wijaya,+6281200000006,2020-01-01T00:00:00Z
-TEN-007,maya.putri@ampera.com,Maya Putri,+6281200000007,2020-01-01T00:00:00Z
-TEN-008,fajar.nugroho@ampera.com,Fajar Nugroho,+6281200000008,2020-01-01T00:00:00Z
-TEN-009,fajar.nugroho.2@ampera.com,Fajar Nugroho 2,+6281200000009,2020-01-01T00:00:00Z
-TEN-010,nadia.rahma@ampera.com,Nadia Rahma,+6281200000010,2020-01-01T00:00:00Z
-TEN-011,agus.saputra@ampera.com,Agus Saputra,+6281200000011,2020-01-01T00:00:00Z
-TEN-012,lina.kartika@ampera.com,Lina Kartika,+6281200000012,2020-01-01T00:00:00Z
+TEN-001,budi.santoso@ampera.com,Budi Santoso,+6281200000001,2019-12-31T17:00:00Z
+TEN-002,siti.aminah@ampera.com,Siti Aminah,+6281200000002,2019-12-31T17:00:00Z
+TEN-003,rizky.pratama@ampera.com,Rizky Pratama,+6281200000003,2019-12-31T17:00:00Z
+TEN-004,rizky.pratama.2@ampera.com,Rizky Pratama 2,+6281200000004,2019-12-31T17:00:00Z
+TEN-005,dewi.lestari@ampera.com,Dewi Lestari,+6281200000005,2019-12-31T17:00:00Z
+TEN-006,andi.wijaya@ampera.com,Andi Wijaya,+6281200000006,2019-12-31T17:00:00Z
+TEN-007,maya.putri@ampera.com,Maya Putri,+6281200000007,2019-12-31T17:00:00Z
+TEN-008,fajar.nugroho@ampera.com,Fajar Nugroho,+6281200000008,2019-12-31T17:00:00Z
+TEN-009,fajar.nugroho.2@ampera.com,Fajar Nugroho 2,+6281200000009,2019-12-31T17:00:00Z
+TEN-010,nadia.rahma@ampera.com,Nadia Rahma,+6281200000010,2019-12-31T17:00:00Z
+TEN-011,agus.saputra@ampera.com,Agus Saputra,+6281200000011,2019-12-31T17:00:00Z
+TEN-012,lina.kartika@ampera.com,Lina Kartika,+6281200000012,2019-12-31T17:00:00Z

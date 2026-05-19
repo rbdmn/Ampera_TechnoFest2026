@@ -11,6 +11,7 @@ import csv
 import hashlib
 import math
 import random
+from calendar import monthrange
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -24,7 +25,9 @@ DEFAULT_OUTPUT_DIR = ROOT_DIR / "data" / "processed_new"
 TARIFF_PER_KWH = 1444.70
 MONTHLY_LIMIT_KWH = 50.0
 ROOM_COUNT = 10
-START_DATE = datetime(2020, 1, 1, tzinfo=timezone.utc)
+WIB = timezone(timedelta(hours=7))
+START_DATE = datetime(2020, 1, 1, tzinfo=WIB)
+DEFAULT_CUTOFF = datetime(2026, 5, 19, 16, 0, tzinfo=WIB)
 EMAIL_DOMAIN = "ampera.com"
 
 ROOM_NAMES = [
@@ -75,6 +78,61 @@ def isoformat_utc(dt: datetime) -> str:
 
 def period_key(dt: datetime) -> str:
     return dt.strftime("%Y-%m")
+
+
+def parse_cutoff(value: str | None) -> datetime:
+    if not value:
+        return DEFAULT_CUTOFF
+
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=WIB)
+    return parsed.astimezone(WIB)
+
+
+def month_end_timestamp(period: str) -> str:
+    year, month = (int(part) for part in period.split("-", maxsplit=1))
+    last_day = monthrange(year, month)[1]
+    return f"{year:04d}-{month:02d}-{last_day:02d}T00:00:00Z"
+
+
+def build_timeline(cutoff: datetime) -> list[datetime]:
+    """Build a timeline that ends at 2026-05-19 16:00 WIB."""
+    cutoff = cutoff.astimezone(WIB)
+    timeline: list[datetime] = []
+
+    current = START_DATE
+    may_start = datetime(2026, 5, 1, tzinfo=WIB)
+
+    while current < min(cutoff, may_start):
+        timeline.append(current)
+        current += timedelta(hours=1)
+
+    if cutoff < may_start:
+        return timeline
+
+    day = may_start
+    while day <= cutoff:
+        if day.year != 2026 or day.month != 5:
+            day += timedelta(days=1)
+            continue
+
+        if day.day < 19:
+            slots = (2, 8, 14, 20)
+        elif day.day == 19:
+            slots = (2, 8, 14, 16)
+        else:
+            break
+
+        for hour in slots:
+            stamped = day.replace(hour=hour, minute=0, second=0, microsecond=0)
+            if stamped <= cutoff:
+                timeline.append(stamped)
+
+        day += timedelta(days=1)
+
+    timeline.sort()
+    return timeline
 
 
 def write_csv(path: Path, fieldnames: list[str], rows: Iterable[dict[str, object]]) -> int:
@@ -194,11 +252,8 @@ def generate_data(
     output_dir: Path,
     end_date: datetime | None = None,
 ) -> dict[str, int]:
-    if end_date is None:
-        end_date = datetime(2026, 5, 1, tzinfo=timezone.utc)
-    end_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    end_date += timedelta(days=32)
-    end_date = end_date.replace(day=1)
+    cutoff = parse_cutoff(end_date.isoformat() if end_date is not None else None)
+    cutoff = min(cutoff, DEFAULT_CUTOFF)
 
     rooms = build_rooms()
     tenants = build_tenants(rooms)
@@ -276,8 +331,7 @@ def generate_data(
     warned_80: set[tuple[str, str]] = set()
     warned_100: set[tuple[str, str]] = set()
 
-    t = START_DATE
-    while t < end_date:
+    for t in build_timeline(cutoff):
         month = period_key(t)
         iso_year, iso_week, _ = t.isocalendar()
 
@@ -288,7 +342,7 @@ def generate_data(
             monthly_totals[monthly_key] += kwh
 
             consumption_rows.append({
-                "log_id": stable_id("LOG", t.strftime("%Y%m%dT%H%M%SZ"), room.room_id),
+            "log_id": stable_id("LOG", t.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), room.room_id),
                 "room_id": room.room_id,
                 "timestamp": isoformat_utc(t),
                 "kwh_used": f"{kwh:.4f}",
@@ -338,9 +392,6 @@ def generate_data(
                     "triggered_at": isoformat_utc(t),
                     "is_read": False,
                 })
-
-        t += timedelta(hours=1)
-
     meter_rows: list[dict] = []
     for (room_id, year, week), bucket in sorted(weekly_totals.items()):
         room = bucket["room"]
@@ -373,7 +424,7 @@ def generate_data(
             "total_kwh": f"{total_kwh_val:.4f}",
             "total_amount_idr": round(total_kwh_val * room.tariff_per_kwh),
             "status": "generated",
-            "generated_at": f"{month}-01T00:00:00Z",
+            "generated_at": month_end_timestamp(month),
         })
 
     counts = {
@@ -432,7 +483,7 @@ def generate_data(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Generate synthetic consumption data (2020-01 to 2026-05) for Ampera AI."
+        description="Generate synthetic consumption data (2020-01 to 2026-05-19 16:00 WIB) for Ampera AI."
     )
     parser.add_argument(
         "--output-dir",
@@ -444,7 +495,7 @@ def parse_args() -> argparse.Namespace:
         "--end-date",
         type=str,
         default=None,
-        help="End date in YYYY-MM format (default: 2026-05).",
+        help="Cutoff datetime in ISO format (default: 2026-05-19T16:00:00+07:00).",
     )
     return parser.parse_args()
 
@@ -453,8 +504,7 @@ def main() -> None:
     args = parse_args()
     end_date = None
     if args.end_date:
-        parts = args.end_date.split("-")
-        end_date = datetime(int(parts[0]), int(parts[1]), 1, tzinfo=timezone.utc)
+        end_date = parse_cutoff(args.end_date)
 
     counts = generate_data(output_dir=args.output_dir, end_date=end_date)
 

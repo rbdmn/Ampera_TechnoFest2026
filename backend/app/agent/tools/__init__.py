@@ -8,6 +8,7 @@ _TOOL_MODULES = {
     "analyze_pattern": "app.agent.tools.analyze_pattern",
     "compare_rooms": "app.agent.tools.compare_rooms",
     "calculate_bill": "app.agent.tools.calculate_bill",
+    "get_end_of_day_report": "app.agent.tools.end_of_day_report",
     "get_all_tools": "app.agent.tools.get_tool_list",
     "get_billing_summary": "app.agent.tools.billing_summary",
     "get_mock_consumption": "app.agent.tools.get_mock_consumption",
@@ -26,6 +27,7 @@ def __getattr__(name: str) -> Any:
             __getattr__("calculate_bill"),
             __getattr__("send_notification"),
             __getattr__("query_room_details"),
+            __getattr__("get_end_of_day_report"),
             __getattr__("get_billing_summary"),
             __getattr__("list_anomalies"),
             __getattr__("compare_rooms"),
@@ -41,6 +43,7 @@ def __getattr__(name: str) -> Any:
 
 query_room_details = __getattr__("query_room_details")
 get_billing_summary = __getattr__("get_billing_summary")
+get_end_of_day_report = __getattr__("get_end_of_day_report")
 list_anomalies = __getattr__("list_anomalies")
 compare_rooms = __getattr__("compare_rooms")
 

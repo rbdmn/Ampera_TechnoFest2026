@@ -1,17 +1,106 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
 import { Zap, Banknote, Building2, AlertTriangle, AlertCircle, Info, Lightbulb, MoreHorizontal, Bot } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Bar, BarChart, ResponsiveContainer, XAxis, Tooltip } from "recharts"
+import { apiFetch } from "@/lib/api"
 
-// Dummy data untuk grafik
-const data = Array.from({ length: 30 }).map((_, i) => ({
+// Dummy data untuk grafik bila API belum tersedia
+const defaultChartData = Array.from({ length: 30 }).map((_, i) => ({
   name: `Oct ${i + 1}`,
   total: Math.floor(Math.random() * 500) + 100,
 }))
 
+const formatIDR = (value: number) =>
+  new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+  }).format(value)
+
+interface AdminDashboardOverview {
+  range: {
+    start: string
+    end: string
+    interval: string
+  }
+  totals: {
+    rooms: number
+    users: number
+    kwh: number
+  }
+  series: Array<{ ts: string; kwh: number }>
+}
+
 export default function AdminDashboardPage() {
+  const [overview, setOverview] = useState<AdminDashboardOverview | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const chartData = useMemo(() => {
+    if (!overview) return defaultChartData
+
+    return overview.series.map((item) => ({
+      name: new Date(item.ts).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      }),
+      total: item.kwh,
+    }))
+  }, [overview])
+
+  const totalKwh = overview?.totals.kwh ?? 0
+  const estimatedBill = Math.round(totalKwh * 1500)
+  const activeRooms = overview?.totals.rooms ?? 0
+  const activeUsers = overview?.totals.users ?? 0
+  const chartTitle = overview
+    ? `Building total across ${new Date(overview.range.end).toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      })}`
+    : "Building total across last 30 days"
+
+  useEffect(() => {
+    const fetchOverview = async () => {
+      try {
+        const res = await apiFetch("/dashboard/admin/overview")
+        if (!res.ok) {
+          const data = await res.json().catch(() => null)
+          throw new Error(data?.detail || "Gagal memuat data dashboard")
+        }
+
+        const data: AdminDashboardOverview = await res.json()
+        setOverview(data)
+      } catch (err: any) {
+        setError(err?.message || "Terjadi kesalahan saat memuat dashboard")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchOverview()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center text-slate-600">
+        Loading admin dashboard...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center">
+        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
+          {error}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
       
@@ -39,7 +128,7 @@ export default function AdminDashboardPage() {
             <Zap className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900">12,458.2</div>
+            <div className="text-2xl font-bold text-slate-900">{totalKwh.toLocaleString("en-US", { maximumFractionDigits: 1 })}</div>
             <p className="text-xs text-green-600 font-medium flex items-center mt-1">
               <span className="mr-1">↘</span> -4.2% vs last month
             </p>
@@ -53,7 +142,7 @@ export default function AdminDashboardPage() {
             <Banknote className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900">18,245,000</div>
+            <div className="text-2xl font-bold text-slate-900">{formatIDR(estimatedBill)}</div>
             <p className="text-xs text-slate-500 mt-1">Projected end of cycle</p>
           </CardContent>
         </Card>
@@ -65,8 +154,8 @@ export default function AdminDashboardPage() {
             <Building2 className="h-4 w-4 text-slate-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900">42 / 50</div>
-            <p className="text-xs text-slate-500 mt-1">84% occupancy rate</p>
+            <div className="text-2xl font-bold text-slate-900">{activeRooms}</div>
+            <p className="text-xs text-slate-500 mt-1">{activeUsers} active users</p>
           </CardContent>
         </Card>
 
@@ -90,7 +179,7 @@ export default function AdminDashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-base font-semibold">Daily Consumption</CardTitle>
-              <p className="text-xs text-slate-500">Building total across last 30 days</p>
+              <p className="text-xs text-slate-500">{chartTitle}</p>
             </div>
             <button className="text-xs border text-blue-600 border-blue-200 bg-blue-50 px-3 py-1 rounded-md font-medium">
               📅 Last 30 Days
@@ -99,7 +188,7 @@ export default function AdminDashboardPage() {
           <CardContent>
             <div className="h-[200px] w-full mt-4">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data}>
+                <BarChart data={chartData}>
                   <Tooltip cursor={{ fill: '#f1f5f9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}/>
                   <Bar dataKey="total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={(value) => value.includes('1') || value.includes('15') || value.includes('30') ? value : ''} />
