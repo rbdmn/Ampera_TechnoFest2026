@@ -16,7 +16,9 @@ from sqlalchemy.exc import IntegrityError
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ROOT_DIR = BACKEND_DIR.parent
-DEFAULT_PROCESSED_DIR = ROOT_DIR / "data" / "processed"
+DEFAULT_PROCESSED_DIR = ROOT_DIR / "data" / "processed_new"
+if not DEFAULT_PROCESSED_DIR.exists():
+    DEFAULT_PROCESSED_DIR = ROOT_DIR / "data" / "processed"
 
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))

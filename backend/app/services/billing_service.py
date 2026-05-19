@@ -11,6 +11,13 @@ def generate_billing_for_period(db: Session, period: str) -> list[BillingRecord]
     created: list[BillingRecord] = []
 
     for room in rooms:
+        # Idempotent: skip if billing for this room+period already exists
+        existing = db.scalar(
+            select(BillingRecord).where(BillingRecord.room_id == room.room_id, BillingRecord.period == period)
+        )
+        if existing:
+            continue
+
         # naive: sum all logs whose timestamp starts with YYYY-MM
         total_kwh = float(
             db.scalar(
