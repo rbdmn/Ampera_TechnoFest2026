@@ -141,3 +141,15 @@ npm run dev
 START VENV
 =========================================================
 venv\Scripts\activate
+
+
+=========================================================
+Tutor setup db baru
+=========================================================
+
+buat db baru nama amperava_v2
+sesuain database url di env
+python -m app.db.init_db
+python data\generate_synthetic.py
+python backend\data\seed.py --clear --processed-dir data\processed_new
+python backend\app\agent\test_run.py
