@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { 
   Zap, 
   BarChart2, 
@@ -13,14 +13,29 @@ import {
   X,
   Check
 } from "lucide-react"
+import { apiFetch } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Bar, BarChart, ResponsiveContainer, XAxis, Tooltip } from "recharts"
 
+interface AdminDashboardOverview {
+  range: {
+    start: string
+    end: string
+    interval: string
+  }
+  totals: {
+    rooms: number
+    users: number
+    kwh: number
+  }
+  series: Array<{ ts: string; kwh: number }>
+}
+
 // --- DUMMY DATA ---
 
-// Daily Log Data
-const dailyLogData = [
+// Daily Log Data (fallback)
+const fallbackDailyLogData = [
   { date: "Oct 14, 2023", consumption: 42.5, peakDemand: 6.2, status: "High Peak Detected", statusType: "warning" },
   { date: "Oct 13, 2023", consumption: 38.1, peakDemand: 4.1, status: "Normal", statusType: "normal" },
   { date: "Oct 12, 2023", consumption: 40.2, peakDemand: 4.5, status: "Normal", statusType: "normal" },
@@ -33,8 +48,8 @@ const dailyLogData = [
   { date: "Oct 05, 2023", consumption: 55.0, peakDemand: 4.7, status: "Normal", statusType: "normal" },
 ]
 
-// Monthly Log Data (Data baru untuk tab Monthly)
-const monthlyLogData = [
+// Monthly Log Data (fallback)
+const fallbackMonthlyLogData = [
   { date: "October 2023", consumption: 1245.0, peakDemand: 6.8, status: "Warning: Approaching Limit", statusType: "warning" },
   { date: "September 2023", consumption: 1320.5, peakDemand: 7.1, status: "High Peak Detected", statusType: "warning" },
   { date: "August 2023", consumption: 1450.0, peakDemand: 6.5, status: "Normal", statusType: "normal" },
@@ -42,8 +57,8 @@ const monthlyLogData = [
   { date: "June 2023", consumption: 1150.8, peakDemand: 5.5, status: "Normal", statusType: "normal" },
 ]
 
-// Daily Chart Data
-const dailyChartData = [
+// Daily Chart Data (fallback)
+const fallbackDailyChartData = [
   { date: "Sep 25", actual: 55, estimated: 0 },
   { date: "Sep 26", actual: 85, estimated: 0 },
   { date: "Sep 27", actual: 75, estimated: 0 },
@@ -66,8 +81,8 @@ const dailyChartData = [
   { date: "Oct 14", actual: 0, estimated: 45 },
 ]
 
-// Monthly Chart Data (Data baru)
-const monthlyChartData = [
+// Monthly Chart Data (fallback)
+const fallbackMonthlyChartData = [
   { date: "May", actual: 1100, estimated: 0 },
   { date: "Jun", actual: 1150, estimated: 0 },
   { date: "Jul", actual: 1280, estimated: 0 },
@@ -81,10 +96,107 @@ export default function EnergyMonitoringPage() {
   const [viewMode, setViewMode] = useState<"daily" | "monthly">("daily")
   const [dateRange, setDateRange] = useState<"7" | "30" | "all">("30")
   const [isDateFilterOpen, setIsDateFilterOpen] = useState(false)
+  const [overview, setOverview] = useState<AdminDashboardOverview | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   
   const [sortBy, setSortBy] = useState<"date" | "consumption" | "peakDemand" | null>(null)
   const [filterStatus, setFilterStatus] = useState<"all" | "normal" | "warning">("all")
   const [isFilterOpen, setIsFilterOpen] = useState(false)
+
+  useEffect(() => {
+    const fetchOverview = async () => {
+      try {
+        const res = await apiFetch('/dashboard/admin/overview?interval=day')
+        if (!res.ok) {
+          const data = await res.json().catch(() => null)
+          throw new Error(data?.detail || 'Gagal memuat data history energi')
+        }
+
+        const overviewData: AdminDashboardOverview = await res.json()
+        setOverview(overviewData)
+      } catch (err: any) {
+        setError(err?.message || 'Terjadi kesalahan saat memuat data history energi')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchOverview()
+  }, [])
+
+  const dailyChartData = useMemo(() => {
+    if (!overview) return fallbackDailyChartData
+
+    return overview.series.map((item) => ({
+      date: new Date(item.ts).toLocaleDateString('en-US', { month: 'short', day: '2-digit' }),
+      actual: Number(item.kwh.toFixed(1)),
+      estimated: 0,
+    }))
+  }, [overview])
+
+  const monthlyChartData = useMemo(() => {
+    if (!overview) return fallbackMonthlyChartData
+
+    const grouped = overview.series.reduce<Record<string, { consumption: number; peakDemand: number; count: number }>>((acc, item) => {
+      const key = new Date(item.ts).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      const consumption = item.kwh
+      const peakDemand = Math.max(3, Number((item.kwh / 8).toFixed(1)))
+
+      if (!acc[key]) {
+        acc[key] = { consumption, peakDemand, count: 1 }
+      } else {
+        acc[key].consumption += consumption
+        acc[key].peakDemand = Math.max(acc[key].peakDemand, peakDemand)
+        acc[key].count += 1
+      }
+      return acc
+    }, {})
+
+    return Object.entries(grouped).map(([month, value]) => ({
+      date: month,
+      actual: Number(value.consumption.toFixed(1)),
+      estimated: 0,
+    }))
+  }, [overview])
+
+  const dailyLogData = useMemo(() => {
+    if (!overview) return fallbackDailyLogData
+
+    return overview.series.map((item) => ({
+      date: new Date(item.ts).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+      consumption: Number(item.kwh.toFixed(1)),
+      peakDemand: Number((item.kwh / 8).toFixed(1)),
+      status: item.kwh > 65 ? 'High Peak Detected' : 'Normal',
+      statusType: item.kwh > 65 ? 'warning' : 'normal',
+    }))
+  }, [overview])
+
+  const monthlyLogData = useMemo(() => {
+    if (!overview) return fallbackMonthlyLogData
+
+    const grouped = overview.series.reduce<Record<string, { consumption: number; peakDemand: number }>>((acc, item) => {
+      const month = new Date(item.ts).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      const consumption = item.kwh
+      const peakDemand = Math.max(3, Number((item.kwh / 8).toFixed(1)))
+
+      if (!acc[month]) {
+        acc[month] = { consumption, peakDemand }
+      } else {
+        acc[month].consumption += consumption
+        acc[month].peakDemand = Math.max(acc[month].peakDemand, peakDemand)
+      }
+      return acc
+    }, {})
+
+    return Object.entries(grouped).map(([month, value]) => ({
+      date: month,
+      consumption: Number(value.consumption.toFixed(1)),
+      peakDemand: value.peakDemand,
+      status: value.consumption > 1300 ? 'Warning: Approaching Limit' : 'Normal',
+      statusType: value.consumption > 1300 ? 'warning' : 'normal',
+    }))
+  }, [overview])
 
   // LOGIC: Memilih data teks untuk dropdown Date Filter
   const getDateRangeLabel = () => {
@@ -139,6 +251,22 @@ export default function EnergyMonitoringPage() {
   }
 
   const hasActiveFilters = sortBy !== null || filterStatus !== "all" || dateRange !== "30"
+
+  if (loading) {
+    return (
+      <div className="max-w-[1400px] mx-auto py-20 text-center text-slate-600">
+        Memuat data history energi...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-[1400px] mx-auto py-20 text-center text-red-600">
+        {error}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
