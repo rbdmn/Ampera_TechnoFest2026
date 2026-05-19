@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: ampera-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # isi manual di Render dashboard
+      - key: SECRET_KEY
+        sync: false          # isi manual di Render dashboard
+      - key: CORS_ORIGINS
+        sync: false          # isi URL Vercel setelah deploy frontend
+      - key: ENVIRONMENT
+        value: production
+      - key: ENABLE_SCHEDULER
+        value: "false"       # free tier spin down, scheduler tidak reliable
+      - key: OLLAMA_BASE_URL
+        value: ""            # kosong = agent fallback ke mock
+      - key: OLLAMA_MODEL
+        value: ""

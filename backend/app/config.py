@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # --- Auth / Secrets ---
     secret_key: str = "change-me"
 
+    # --- CORS ---
+    # Pisah dengan koma jika lebih dari satu, contoh: https://app.vercel.app,http://localhost:3000
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
     # --- Business defaults ---
     tariff_per_kwh: float = 1444.70
     default_limit_kwh: float = 50.0
