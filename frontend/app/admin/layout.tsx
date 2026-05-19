@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Toaster } from "@/components/ui/sonner"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() // Mengambil URL yang sedang aktif saat ini
@@ -150,6 +151,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {children}
         </div>
       </main>
+
+      <Toaster
+        position="top-right"
+        richColors
+        closeButton
+      />
     </div>
   )
 }

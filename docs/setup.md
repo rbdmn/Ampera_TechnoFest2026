@@ -117,3 +117,8 @@ START BACKEND
 Pastiin dah download next atau node js terbaru
 
 npm run dev
+
+==========================================================
+START VENV
+==========================================================
+venv\Scripts\activate

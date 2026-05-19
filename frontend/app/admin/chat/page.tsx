@@ -1,18 +1,22 @@
 "use client"
 
 import { FormEvent, useEffect, useRef, useState } from "react"
-// @ts-ignore
-import ReactMarkdown from "react-markdown"
 import { 
   Bot, 
   Download, 
   Trash2, 
   SendHorizontal, 
   Lightbulb, 
-  Settings
+  Settings,
+  Sparkles,
+  CheckCircle2,
+  Send,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import ChatMarkdown from "@/components/chat/ChatMarkdown"
+import { toast } from "sonner"
 
 type Message = {
   id: number
@@ -95,12 +99,49 @@ function inferActiveTools(message: string) {
   return Array.from(tools)
 }
 
+function isSendingNotification(tools: string[], _input: string): boolean {
+  return tools.includes("send_notification")
+}
+
+function hasNotificationSuccess(content: string): boolean {
+  return /notifikasi\s*berhasil|berhasil\s*dikirim|✅|terkirim/i.test(content)
+}
+
+function exportChat(messages: Message[]) {
+  if (messages.length === 0) return
+  const text = messages
+    .map((m) => {
+      const role = m.role === "user" ? "Anda" : "Ampera AI"
+      return `[${role}]\n${m.content}\n`
+    })
+    .join("\n---\n\n")
+  const blob = new Blob([text], { type: "text/plain" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `ampera-chat-${new Date().toISOString().slice(0, 10)}.txt`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function getTodayLabel(): string {
+  const now = new Date()
+  const h = now.getHours().toString().padStart(2, "0")
+  const m = now.getMinutes().toString().padStart(2, "0")
+  return `Today, ${h}:${m}`
+}
+
+function messagesToHistory(messages: Message[]): { role: string; content: string }[] {
+  return messages.map((m) => ({ role: m.role, content: m.content }))
+}
+
 export default function AIChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [agentTools, setAgentTools] = useState<AgentTool[]>([])
   const [activeTools, setActiveTools] = useState<string[]>(defaultToolLabels)
+  const [timestamp] = useState(getTodayLabel)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -159,7 +200,10 @@ export default function AIChatPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message: trimmed }),
+        body: JSON.stringify({
+          message: trimmed,
+          history: messagesToHistory(messages),
+        }),
       })
 
       if (!response.ok) {
@@ -167,14 +211,24 @@ export default function AIChatPage() {
       }
 
       const data = (await response.json()) as { reply?: string }
+      const reply = data.reply ?? "No reply returned from Ampera AI."
+
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now() + 1,
           role: "assistant",
-          content: data.reply ?? "No reply returned from Ampera AI.",
+          content: reply,
         },
       ])
+
+      if (hasNotificationSuccess(reply)) {
+        toast.success("Alert sent successfully", {
+          description: "Notifikasi peringatan telah dikirim ke kamar terkait.",
+          icon: <CheckCircle2 className="h-4 w-4 text-green-600" />,
+          duration: 4000,
+        })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to reach Ampera AI."
       setMessages((prev) => [
@@ -219,17 +273,26 @@ export default function AIChatPage() {
               </div>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-slate-600" onClick={() => exportChat(messages)}>
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 hover:bg-red-50" onClick={() => setMessages([])}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {/* Chat Messages Area (Scrollable) */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
           
-          {/* Timestamp */}
-          <div className="flex justify-center">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
-              Today, 10:42 AM
-            </span>
-          </div>
+          {messages.length === 0 && (
+            <div className="flex justify-center">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
+                {timestamp}
+              </span>
+            </div>
+          )}
 
           {messages.map((message) =>
             message.role === "user" ? (
@@ -240,33 +303,61 @@ export default function AIChatPage() {
                 <span className="text-[10px] text-slate-400 font-medium mr-1">Manager</span>
               </div>
             ) : (
-              <div key={message.id} className="flex flex-col items-start gap-2 max-w-[95%] sm:max-w-[85%] pb-4">
-                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 w-full">
-                  <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap [&_strong]:font-bold [&_strong]:text-slate-900 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_p]:my-1">
-                    <ReactMarkdown>{message.content}</ReactMarkdown>
-                  </div>
+              <div key={message.id} className="flex flex-col items-start gap-1.5 max-w-[95%] sm:max-w-[90%] pb-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm w-full">
+                  <ChatMarkdown content={message.content} />
                 </div>
-                <span className="text-[10px] text-slate-400 font-medium ml-1">Ampera AI</span>
+                <span className="text-[10px] text-slate-400 font-medium ml-1 flex items-center gap-1">
+                  <Sparkles className="h-3 w-3 text-blue-500" />
+                  Ampera AI
+                </span>
               </div>
             )
           )}
 
           {loading && (
             <div className="flex flex-col items-start gap-2 max-w-[95%] sm:max-w-[85%] pb-4">
-              <div className="flex flex-wrap items-center gap-2 bg-slate-100 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-md font-mono text-[11px]">
-                <Settings className="h-3 w-3 animate-spin" />
-                <span>Executing Tools:</span>
-                {activeTools.map((tool) => (
-                  <span key={tool} className="text-blue-700 font-semibold">
-                    {tool}
-                  </span>
-                ))}
-              </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 w-full">
-                <p className="text-sm text-slate-700 leading-relaxed">
-                  Analyzing consumption data...
-                </p>
-              </div>
+              {isSendingNotification(activeTools, input) ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-1.5 rounded-md font-mono text-[11px]">
+                    <Send className="h-3 w-3 animate-bounce" />
+                    <span>Sending Notification:</span>
+                    <span className="text-emerald-700 font-semibold">send_notification</span>
+                  </div>
+                  <div className="bg-white border border-emerald-200 rounded-xl p-5 shadow-sm space-y-3 w-full">
+                    <div className="flex items-center gap-2 text-sm text-emerald-800 font-medium">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      Mengirim notifikasi ke kamar...
+                    </div>
+                    <div className="flex gap-1.5 items-center text-xs text-slate-500">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: "0.2s" }} />
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: "0.4s" }} />
+                      <span className="ml-1">Memproses...</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 bg-slate-100 border border-slate-200 text-slate-600 px-3 py-1.5 rounded-md font-mono text-[11px]">
+                    <Settings className="h-3 w-3 animate-spin" />
+                    <span>Executing Tools:</span>
+                    {activeTools.map((tool) => (
+                      <span key={tool} className="text-blue-700 font-semibold">
+                        {tool}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 w-full">
+                    <p className="text-sm text-slate-700 leading-relaxed">
+                      Analyzing consumption data...
+                    </p>
+                  </div>
+                </>
+              )}
               <span className="text-[10px] text-slate-400 font-medium ml-1">Ampera AI</span>
             </div>
           )}

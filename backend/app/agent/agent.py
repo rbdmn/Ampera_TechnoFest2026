@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from app.agent.prompts import AGENT_SYSTEM_PROMPT
+from app.agent.prompts import AGENT_SYSTEM_PROMPT, PERSONA
 from app.agent.tools.calculate_bill import calculate_bill
 from app.agent.tools.get_mock_consumption import get_mock_consumption
 from app.config import get_settings
@@ -55,9 +55,9 @@ def _mock_agent_loop(tariff: float) -> dict[str, object]:
             {
                 "status": "mock",
                 "message": (
-                    "Ampera AI detected unusual or high electricity usage. "
-                    f"Total usage: {total_kwh} kWh. "
-                    f"Estimated bill: Rp {estimated_bill:,.0f}."
+                    "Halo! Saya deteksi pemakaian listrik lagi tinggi nih. "
+                    f"Total pemakaian: {total_kwh} kWh. "
+                    f"Estimasi tagihan: Rp {estimated_bill:,.0f}."
                 ),
             }
         )
@@ -114,11 +114,12 @@ def _db_agent_loop(tariff: float, dry_run: bool = False) -> dict[str, object]:
 
             notification: dict[str, str] | None = None
             if analysis.get("is_anomaly"):
+                latest = analysis.get("latest_kwh", 0)
+                mean_val = analysis.get("mean_kwh", 0)
                 message = (
-                    "Terdeteksi anomali konsumsi listrik. "
-                    f"kWh terbaru={analysis.get('latest_kwh'):.3f}, "
-                    f"baseline mean={analysis.get('mean_kwh'):.3f}, "
-                    f"z={analysis.get('z'):.2f}."
+                    f"Kamar {room_id} lagi boros nih! "
+                    f"Pemakaian terbaru {latest:.1f} kWh — jauh di atas rata-rata ({mean_val:.1f} kWh). "
+                    "Coba cek apakah ada AC atau dispenser yang nyala terus."
                 )
                 if dry_run:
                     notification = {
@@ -203,12 +204,16 @@ def build_llm_resolution(agent_result: dict[str, object]) -> dict[str, object]:
         "rooms": compact_rooms,
     }
     prompt = (
-        f"{AGENT_SYSTEM_PROMPT}\n\n"
-        "You are reviewing the actual database tool output below. "
-        "Return an Indonesian operational resolution for the admin before frontend implementation. "
-        "Be concrete: explain what data was read, which tools ran, what action was or would be executed, "
-        "which rooms need attention, and next recommended admin action.\n\n"
-        f"TOOL_OUTPUT_JSON:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
+        f"{PERSONA}\n\n"
+        "Kamu baru saja selesai ngecek semua kamar. Berikut data ringkasan hasil kerjanya.\n"
+        "Jelaskan ke admin dalam bahasa Indonesia yang santai dan ramah:\n"
+        "- Kamar mana saja yang perlu perhatian dan kenapa\n"
+        "- Ada berapa notifikasi yang dibuat/direncanakan\n"
+        "- Estimasi tagihan gedung saat ini\n"
+        "JANGAN pake istilah teknis (z-score, standar deviasi, anomaly).\n"
+        "JANGAN output JSON atau data mentah — jawab dalam bentuk kalimat biasa.\n"
+        "Kasih saran hemat energi yang konkret di akhir.\n\n"
+        f"DATA RINGKAS:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
 
     try:
@@ -268,24 +273,8 @@ def run_ampera_agent(
 
 
 async def chat_with_agent(message: str) -> str:
-    """Compatibility entrypoint for the existing API router."""
-    result = run_ampera_agent()
-    mode = result.get("mode", "unknown")
-
-    if mode == "db":
-        return (
-            "Ampera AI agent finished one DB-backed monitoring loop. "
-            f"Message received: {message}. "
-            f"Rooms checked: {result.get('rooms_checked', 0)}. "
-            f"Notifications created: {len(result.get('notification_logs', []))}. "
-            f"Estimated active bill: Rp {result.get('estimated_bill', 0):,.0f}."
-        )
-
-    return (
-        "Ampera AI agent finished one mock monitoring loop. "
-        f"Message received: {message}. "
-        f"Estimated bill: Rp {result.get('estimated_bill', 0):,.0f}."
-    )
+    """(Legacy) Simple reply for the old compatibility router."""
+    return "Halo! Ada yang bisa saya bantu terkait listrik kos?"
 
 
 async def run_agent_loop() -> dict[str, object]:
