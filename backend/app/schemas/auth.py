@@ -28,3 +28,22 @@ class RegisterResponse(BaseModel):
     room_id: str
     email: EmailStr
     role: str
+
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class ProfileResponse(BaseModel):
+    user_id: str
+    email: EmailStr
+    role: str
+    full_name: str | None = None
+    room_id: str | None = None
+    profile_photo_url: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
+    confirm_new_password: str = Field(..., min_length=6)

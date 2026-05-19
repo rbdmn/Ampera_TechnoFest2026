@@ -293,7 +293,13 @@ def user_overview(
         }
 
     return {
-        "user": {"user_id": user.user_id, "email": user.email, "role": user.role.value},
+        "user": {
+            "user_id": user.user_id,
+            "email": user.email,
+            "role": user.role.value,
+            "full_name": user.full_name,
+            "profile_photo_url": getattr(user, "profile_photo_url", None),
+        },
         "room": {
             "room_id": room_id,
             "tenant_name": room.tenant_name if room else None,

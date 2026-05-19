@@ -82,3 +82,137 @@ def unread_count(
 ) -> dict:
     unread = db.scalar(select(func.count()).select_from(AlertHistory).where(AlertHistory.is_read.is_(False))) or 0
     return {"unread_count": int(unread)}
+
+
+@router.get("/notifications")
+def list_notifications(
+    email: str | None = Query(default=None, description="User email (optional for demo fallback)."),
+    type: str = Query(default="all", description="alert|insight|system|all"),
+    unread_only: bool = Query(default=False),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict:
+    """User-facing notifications.
+
+    Backed by AlertHistory. We map:
+    - alert: usage_warning, limit_exceeded
+    - insight: anomaly
+    - system: (none for now)
+
+    If email is provided, we scope to the user's room_id.
+    """
+
+    # demo fallback: if email missing, don't scope by room (show all)
+    room_id = None
+    if email:
+        user = db.scalar(select(User).where(User.email == email))
+        if user and user.is_active and user.room_id:
+            room_id = user.room_id
+
+    type_map = {
+        "alert": {"usage_warning", "limit_exceeded"},
+        "insight": {"anomaly"},
+        "system": set(),
+        "all": None,
+    }
+
+    stmt = select(AlertHistory)
+    if room_id:
+        stmt = stmt.where(AlertHistory.room_id == room_id)
+
+    allowed = type_map.get(type, None)
+    if allowed is not None and allowed:
+        stmt = stmt.where(AlertHistory.alert_type.in_(list(allowed)))
+
+    if unread_only:
+        stmt = stmt.where(AlertHistory.is_read.is_(False))
+
+    total_items = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    unread_count = db.scalar(
+        select(func.count()).select_from(AlertHistory)
+        .where(AlertHistory.is_read.is_(False))
+        .where(AlertHistory.room_id == room_id) if room_id else select(func.count()).select_from(AlertHistory).where(AlertHistory.is_read.is_(False))
+    ) or 0
+
+    offset = (page - 1) * limit
+    rows = list(db.scalars(stmt.order_by(AlertHistory.triggered_at.desc()).offset(offset).limit(limit)).all())
+
+    data = [AlertOut.model_validate(r).model_dump() for r in rows]
+    return {
+        "data": data,
+        "meta": {
+            "total_items": int(total_items),
+            "unread_count": int(unread_count),
+            "current_page": int(page),
+        },
+    }
+
+
+@router.post("/notifications/mark-all-read")
+def mark_all_notifications_read(
+    email: str | None = Query(default=None, description="User email (optional for demo fallback)."),
+    db: Session = Depends(get_db),
+) -> dict:
+    room_id = None
+    if email:
+        user = db.scalar(select(User).where(User.email == email))
+        if user and user.is_active and user.room_id:
+            room_id = user.room_id
+
+    stmt = select(AlertHistory).where(AlertHistory.is_read.is_(False))
+    if room_id:
+        stmt = stmt.where(AlertHistory.room_id == room_id)
+
+    rows = list(db.scalars(stmt).all())
+    for r in rows:
+        r.is_read = True
+
+    db.commit()
+
+    return {"updated": len(rows)}
+
+
+@router.post("/notifications/{alert_id}/read")
+def mark_notification_read(alert_id: str, db: Session = Depends(get_db)) -> dict:
+    alert = db.get(AlertHistory, alert_id)
+    if not alert:
+        return {"error": "notification_not_found"}
+
+    alert.is_read = True
+    db.commit()
+
+    return {"alert_id": alert.alert_id, "is_read": True}
+
+
+@router.get("/feedback")
+def list_admin_feedback(
+    email: str | None = Query(default=None, description="User email (optional for demo fallback)."),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict:
+    """MVP: reuse AlertHistory as a "message" stream.
+
+    We treat alert_type=anomaly as feedback for now.
+    (Can be replaced with a dedicated messages table later.)
+    """
+
+    room_id = None
+    if email:
+        user = db.scalar(select(User).where(User.email == email))
+        if user and user.is_active and user.room_id:
+            room_id = user.room_id
+
+    stmt = select(AlertHistory).where(AlertHistory.alert_type == "anomaly")
+    if room_id:
+        stmt = stmt.where(AlertHistory.room_id == room_id)
+
+    total_items = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+
+    offset = (page - 1) * limit
+    rows = list(db.scalars(stmt.order_by(AlertHistory.triggered_at.desc()).offset(offset).limit(limit)).all())
+
+    data = [AlertOut.model_validate(r).model_dump() for r in rows]
+
+    return {"data": data, "meta": {"total_items": int(total_items), "current_page": int(page)}}

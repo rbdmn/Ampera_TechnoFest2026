@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.agent.agent import configure_agent_console_logging
 from app.agent.scheduler import start_scheduler, stop_scheduler
@@ -20,6 +21,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve uploaded files (e.g., profile photos)
+app.mount(settings.uploads_public_path, StaticFiles(directory=settings.uploads_dir), name="static")
 
 # --- Routers ---
 from app.api import alerts, auth, billing, consumption, occupancies, rooms, tenants  # noqa: E402
@@ -62,6 +66,7 @@ async def startup() -> None:
         pass
 
     start_scheduler()
+
 
 @app.on_event("shutdown")
 async def shutdown() -> None:

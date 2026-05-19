@@ -100,6 +100,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.user, nullable=False)
 
+    # --- Profile ---
+    profile_photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     # User links to Tenant, and by business rule a Tenant can only have one active room.
     tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.tenant_id"), nullable=True)
     tenant: Mapped[Tenant | None] = relationship()
