@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { 
   Check, 
   AlertTriangle, 
@@ -10,83 +10,94 @@ import {
   WifiOff
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { getEmail } from "@/lib/auth"
+import { 
+  getUserNotifications, 
+  markAllNotificationsRead, 
+  markNotificationRead, 
+  type AlertOut 
+} from "@/lib/api"
 
-// Dummy data sesuai desain
-const initialNotifications = [
-  {
-    id: 1,
-    type: "Alert",
-    title: "Usage Limit Approaching",
-    message: "Your projected energy usage for this billing cycle is set to exceed your defined threshold of 850 kWh. Consider adjusting HVAC schedules.",
-    time: "10m ago",
-    isUnread: true,
-    icon: AlertTriangle,
-    color: "red", // Menentukan warna border dan icon
-    actionText: null
-  },
-  {
-    id: 2,
-    type: "Insight",
-    title: "Peak Hour Optimization",
-    message: "Shifting your heavy appliance usage to off-peak hours (10 PM - 6 AM) could save you an estimated 12% on your next invoice.",
-    time: "2h ago",
-    isUnread: true,
-    icon: Lightbulb,
-    color: "blue",
-    actionText: null
-  },
-  {
-    id: 3,
-    type: "System",
-    title: "Invoice Generated: October",
-    message: "Your monthly electricity invoice for October has been generated and is ready for review. Total amount due: Rp 512,400.",
-    time: "Yesterday",
-    isUnread: false,
-    icon: Receipt,
-    color: "orange",
-    actionText: "View Invoice"
-  },
-  {
-    id: 4,
-    type: "Insight",
-    title: "Weekly Efficiency Summary",
-    message: "Great job! Your household was 5% more efficient compared to the neighborhood average last week.",
-    time: "Oct 24",
-    isUnread: false,
-    icon: Leaf,
-    color: "blue",
-    actionText: null
-  },
-  {
-    id: 5,
-    type: "Alert",
-    title: "Smart Meter Disconnected",
-    message: "Connection to your smart meter was temporarily lost for 15 minutes. Data interpolation was applied during this period.",
-    time: "Oct 22",
-    isUnread: false,
-    icon: WifiOff,
-    color: "red",
-    actionText: null
+function typeToUi(alertType: string) {
+  // Map backend alert_type -> UI
+  if (alertType === "usage_warning" || alertType === "limit_exceeded") {
+    return { type: "Alert", icon: AlertTriangle, color: "red" as const }
   }
-]
+  if (alertType === "anomaly") {
+    return { type: "Insight", icon: Lightbulb, color: "blue" as const }
+  }
+  return { type: "System", icon: WifiOff, color: "orange" as const }
+}
+
+function getColorStyles(color: string) {
+  switch (color) {
+    case "red":
+      return { border: "border-l-red-500", bg: "bg-red-50", text: "text-red-600" }
+    case "blue":
+      return { border: "border-l-blue-500", bg: "bg-blue-50", text: "text-blue-600" }
+    case "orange":
+      return { border: "border-l-orange-500", bg: "bg-orange-50", text: "text-orange-600" }
+    default:
+      return { border: "border-l-slate-300", bg: "bg-slate-100", text: "text-slate-600" }
+  }
+}
+
+function timeAgo(iso: string) {
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return iso
+  const diff = Date.now() - t
+  const min = Math.floor(diff / 60000)
+  if (min < 1) return "just now"
+  if (min < 60) return `${min}m ago`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  const day = Math.floor(hr / 24)
+  return `${day}d ago`
+}
 
 export default function NotificationsPage() {
   const [activeTab, setActiveTab] = useState("All")
-  const [notifications, setNotifications] = useState(initialNotifications)
+  const [data, setData] = useState<AlertOut[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const email = useMemo(() => getEmail() ?? undefined, [])
 
-  // Fungsi untuk menandai semua sudah dibaca
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(notif => ({ ...notif, isUnread: false })))
+  async function load() {
+    try {
+      setLoading(true)
+      setError(null)
+
+      const typeFilter =
+        activeTab === "Alerts"
+          ? "alert"
+          : activeTab === "Insights"
+            ? "insight"
+            : "all"
+
+      const unreadOnly = activeTab === "Unread"
+
+      const res = await getUserNotifications({ email, type: typeFilter as any, unread_only: unreadOnly, page: 1, limit: 50 })
+      setData(res.data)
+    } catch (e: any) {
+      setError(e?.message ?? "failed_to_load")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Fungsi dinamis untuk warna
-  const getColorStyles = (color: string) => {
-    switch (color) {
-      case "red": return { border: "border-l-red-500", bg: "bg-red-50", text: "text-red-600" }
-      case "blue": return { border: "border-l-blue-500", bg: "bg-blue-50", text: "text-blue-600" }
-      case "orange": return { border: "border-l-orange-500", bg: "bg-orange-50", text: "text-orange-600" }
-      default: return { border: "border-l-slate-300", bg: "bg-slate-100", text: "text-slate-600" }
-    }
+  useEffect(() => {
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  const markAllAsRead = async () => {
+    await markAllNotificationsRead(email)
+    await load()
+  }
+
+  const onMarkRead = async (alertId: string) => {
+    await markNotificationRead(alertId)
+    await load()
   }
 
   return (
@@ -98,7 +109,13 @@ export default function NotificationsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Notifications</h1>
           <p className="text-sm text-slate-500 mt-1">Your latest alerts, insights, and system updates.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={markAllAsRead} className="text-slate-600 bg-white">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={markAllAsRead} 
+          className="text-slate-600 bg-white"
+          disabled={loading}
+        >
           <Check className="h-4 w-4 mr-2" />
           Mark all as read
         </Button>
@@ -121,59 +138,78 @@ export default function NotificationsPage() {
         ))}
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <div className="p-4 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
       {/* Notifications List */}
-      <div className="space-y-4">
-        {notifications.map((notif) => {
-          const colors = getColorStyles(notif.color)
-          const Icon = notif.icon
+      {loading ? (
+        <div className="text-sm text-slate-500">Loading...</div>
+      ) : (
+        <div className="space-y-4">
+          {data.length === 0 ? (
+            <div className="text-sm text-slate-500">No notifications.</div>
+          ) : (
+            data.map((notif) => {
+              const ui = typeToUi(notif.alert_type)
+              const colors = getColorStyles(ui.color)
+              const Icon = ui.icon
 
-          return (
-            <div 
-              key={notif.id} 
-              className={`relative flex items-start gap-4 p-5 bg-white border border-slate-200 shadow-sm rounded-r-xl rounded-l-sm border-l-4 ${colors.border} ${notif.isUnread ? 'bg-blue-50/10' : ''}`}
-            >
-              {/* Unread Indicator Dot */}
-              {notif.isUnread && (
-                <div className="absolute top-6 left-0 -translate-x-1.5 w-2 h-2 rounded-full bg-blue-600 border border-white"></div>
-              )}
-
-              {/* Icon */}
-              <div className={`p-2.5 rounded-full shrink-0 mt-0.5 ${colors.bg} ${colors.text}`}>
-                <Icon className="h-5 w-5" />
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mb-1">
-                  <h3 className={`text-sm font-bold ${notif.isUnread ? 'text-slate-900' : 'text-slate-700'}`}>
-                    {notif.title}
-                  </h3>
-                  <span className="text-xs text-slate-400 whitespace-nowrap font-medium">
-                    {notif.time}
-                  </span>
-                </div>
-                
-                <p className="text-sm text-slate-600 leading-relaxed mb-3">
-                  {notif.message}
-                </p>
-
-                {/* Badges & Actions */}
-                <div className="flex items-center gap-4">
-                  <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm uppercase tracking-wider ${colors.bg} ${colors.text}`}>
-                    {notif.type}
-                  </span>
-                  
-                  {notif.actionText && (
-                    <button className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline">
-                      {notif.actionText}
-                    </button>
+              return (
+                <div 
+                  key={notif.alert_id} 
+                  className={`relative flex items-start gap-4 p-5 bg-white border border-slate-200 shadow-sm rounded-r-xl rounded-l-sm border-l-4 ${colors.border} ${notif.is_read ? '' : 'bg-blue-50/10'}`}
+                >
+                  {/* Unread Indicator Dot */}
+                  {!notif.is_read && (
+                    <div className="absolute top-6 left-0 -translate-x-1.5 w-2 h-2 rounded-full bg-blue-600 border border-white"></div>
                   )}
+
+                  {/* Icon */}
+                  <div className={`p-2.5 rounded-full shrink-0 mt-0.5 ${colors.bg} ${colors.text}`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 mb-1">
+                      <h3 className={`text-sm font-bold ${notif.is_read ? 'text-slate-700' : 'text-slate-900'}`}>
+                        {notif.alert_type.replaceAll("_", " ")}
+                      </h3>
+                      <span className="text-xs text-slate-400 whitespace-nowrap font-medium">
+                        {timeAgo(notif.triggered_at)}
+                      </span>
+                    </div>
+                    
+                    <p className="text-sm text-slate-600 leading-relaxed mb-3">
+                      {notif.message}
+                    </p>
+
+                    {/* Badges & Actions */}
+                    <div className="flex items-center gap-4">
+                      <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm uppercase tracking-wider ${colors.bg} ${colors.text}`}>
+                        {ui.type}
+                      </span>
+                      
+                      {!notif.is_read && (
+                        <button
+                          onClick={() => onMarkRead(notif.alert_id)}
+                          className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          Mark as read
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+              )
+            })
+          )}
+        </div>
+      )}
     </div>
   )
 }

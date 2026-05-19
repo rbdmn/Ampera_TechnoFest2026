@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # --- Auth / Secrets ---
     secret_key: str = "change-me"
 
+    # --- CORS ---
+    # Pisah dengan koma jika lebih dari satu, contoh: https://app.vercel.app,http://localhost:3000
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
     # --- Business defaults ---
     tariff_per_kwh: float = 1444.70
     default_limit_kwh: float = 50.0
@@ -29,6 +33,14 @@ class Settings(BaseSettings):
     ollama_api_key: str | None = None
     ollama_temperature: float = 0.0
     enable_scheduler: bool = False
+
+    # --- Uploads (profile photo) ---
+    # Store uploads inside backend dir to avoid cwd-dependent paths.
+    uploads_dir: str = str((BACKEND_DIR / "uploads").resolve())
+    uploads_public_path: str = "/static"
+
+    # Base URL used when returning absolute URLs to clients (so Next.js doesn't try localhost:3000).
+    public_base_url: str = "http://localhost:8000"
 
     model_config = SettingsConfigDict(
         env_file=BACKEND_DIR / ".env",
@@ -48,6 +60,25 @@ class Settings(BaseSettings):
         if info.field_name == "ollama_base_url":
             return "http://localhost:11434"
         return "llama3"
+
+    @field_validator("uploads_dir", mode="before")
+    @classmethod
+    def _normalize_uploads_dir(cls, value: str | None):
+        # Allow env to override with relative/absolute; normalize relative to backend dir.
+        if not value:
+            return str((BACKEND_DIR / "uploads").resolve())
+        p = Path(str(value))
+        if not p.is_absolute():
+            p = (BACKEND_DIR / p).resolve()
+        return str(p)
+
+    @field_validator("public_base_url", mode="before")
+    @classmethod
+    def _normalize_public_base_url(cls, value: str | None):
+        if not value:
+            return "http://localhost:8000"
+        v = str(value).strip().rstrip("/")
+        return v
 
 
 @lru_cache
