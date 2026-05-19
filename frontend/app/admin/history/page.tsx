@@ -32,64 +32,6 @@ interface AdminDashboardOverview {
   series: Array<{ ts: string; kwh: number }>
 }
 
-// --- DUMMY DATA ---
-
-// Daily Log Data (fallback)
-const fallbackDailyLogData = [
-  { date: "Oct 14, 2023", consumption: 42.5, peakDemand: 6.2, status: "High Peak Detected", statusType: "warning" },
-  { date: "Oct 13, 2023", consumption: 38.1, peakDemand: 4.1, status: "Normal", statusType: "normal" },
-  { date: "Oct 12, 2023", consumption: 40.2, peakDemand: 4.5, status: "Normal", statusType: "normal" },
-  { date: "Oct 11, 2023", consumption: 39.8, peakDemand: 4.3, status: "Normal", statusType: "normal" },
-  { date: "Oct 10, 2023", consumption: 68.0, peakDemand: 5.8, status: "Anomalous Usage", statusType: "warning" },
-  { date: "Oct 09, 2023", consumption: 45.0, peakDemand: 4.8, status: "Normal", statusType: "normal" },
-  { date: "Oct 08, 2023", consumption: 68.0, peakDemand: 5.2, status: "Normal", statusType: "normal" },
-  { date: "Oct 07, 2023", consumption: 58.0, peakDemand: 4.9, status: "Normal", statusType: "normal" },
-  { date: "Oct 06, 2023", consumption: 62.0, peakDemand: 5.1, status: "Normal", statusType: "normal" },
-  { date: "Oct 05, 2023", consumption: 55.0, peakDemand: 4.7, status: "Normal", statusType: "normal" },
-]
-
-// Monthly Log Data (fallback)
-const fallbackMonthlyLogData = [
-  { date: "October 2023", consumption: 1245.0, peakDemand: 6.8, status: "Warning: Approaching Limit", statusType: "warning" },
-  { date: "September 2023", consumption: 1320.5, peakDemand: 7.1, status: "High Peak Detected", statusType: "warning" },
-  { date: "August 2023", consumption: 1450.0, peakDemand: 6.5, status: "Normal", statusType: "normal" },
-  { date: "July 2023", consumption: 1280.2, peakDemand: 5.9, status: "Normal", statusType: "normal" },
-  { date: "June 2023", consumption: 1150.8, peakDemand: 5.5, status: "Normal", statusType: "normal" },
-]
-
-// Daily Chart Data (fallback)
-const fallbackDailyChartData = [
-  { date: "Sep 25", actual: 55, estimated: 0 },
-  { date: "Sep 26", actual: 85, estimated: 0 },
-  { date: "Sep 27", actual: 75, estimated: 0 },
-  { date: "Sep 28", actual: 40, estimated: 0 },
-  { date: "Sep 29", actual: 35, estimated: 0 },
-  { date: "Sep 30", actual: 45, estimated: 0 },
-  { date: "Oct 01", actual: 48, estimated: 0 },
-  { date: "Oct 02", actual: 58, estimated: 0 },
-  { date: "Oct 03", actual: 60, estimated: 0 },
-  { date: "Oct 04", actual: 55, estimated: 0 },
-  { date: "Oct 05", actual: 45, estimated: 0 },
-  { date: "Oct 06", actual: 62, estimated: 0 },
-  { date: "Oct 07", actual: 58, estimated: 0 },
-  { date: "Oct 08", actual: 68, estimated: 0 },
-  { date: "Oct 09", actual: 45, estimated: 0 },
-  { date: "Oct 10", actual: 0, estimated: 42 },
-  { date: "Oct 11", actual: 0, estimated: 45 },
-  { date: "Oct 12", actual: 0, estimated: 40 },
-  { date: "Oct 13", actual: 0, estimated: 43 },
-  { date: "Oct 14", actual: 0, estimated: 45 },
-]
-
-// Monthly Chart Data (fallback)
-const fallbackMonthlyChartData = [
-  { date: "May", actual: 1100, estimated: 0 },
-  { date: "Jun", actual: 1150, estimated: 0 },
-  { date: "Jul", actual: 1280, estimated: 0 },
-  { date: "Aug", actual: 1450, estimated: 0 },
-  { date: "Sep", actual: 1320, estimated: 0 },
-  { date: "Oct", actual: 0, estimated: 1245 },
-]
 
 export default function EnergyMonitoringPage() {
   // STATE MANAGEMENT
@@ -107,7 +49,10 @@ export default function EnergyMonitoringPage() {
   useEffect(() => {
     const fetchOverview = async () => {
       try {
-        const res = await apiFetch('/dashboard/admin/overview?interval=day')
+        const startDate = "2020-01-01T00:00:00Z";
+        const endDate = new Date().toISOString();
+
+        const res = await apiFetch(`/dashboard/admin/overview?interval=day&start=${startDate}&end=${endDate}`)
         if (!res.ok) {
           const data = await res.json().catch(() => null)
           throw new Error(data?.detail || 'Gagal memuat data history energi')
@@ -126,42 +71,49 @@ export default function EnergyMonitoringPage() {
   }, [])
 
   const dailyChartData = useMemo(() => {
-    if (!overview) return fallbackDailyChartData
+    if (!overview || overview.series.length === 0) return []
+
+    // Cari rata-rata pemakaian harian
+    const totalUsage = overview.series.reduce((sum, item) => sum + item.kwh, 0)
+    const averageDaily = totalUsage / overview.series.length
 
     return overview.series.map((item) => ({
       date: new Date(item.ts).toLocaleDateString('en-US', { month: 'short', day: '2-digit' }),
       actual: Number(item.kwh.toFixed(1)),
-      estimated: 0,
+      // Logika: Kalau pemakaian hari ini di bawah rata-rata, isi selisihnya ke 'estimated'
+      estimated: item.kwh < averageDaily ? Number((averageDaily - item.kwh).toFixed(1)) : 0,
     }))
   }, [overview])
 
   const monthlyChartData = useMemo(() => {
-    if (!overview) return fallbackMonthlyChartData
+    if (!overview || overview.series.length === 0) return []
 
-    const grouped = overview.series.reduce<Record<string, { consumption: number; peakDemand: number; count: number }>>((acc, item) => {
+    // Grouping data per bulan
+    const grouped = overview.series.reduce<Record<string, { consumption: number }>>((acc, item) => {
       const key = new Date(item.ts).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-      const consumption = item.kwh
-      const peakDemand = Math.max(3, Number((item.kwh / 8).toFixed(1)))
-
-      if (!acc[key]) {
-        acc[key] = { consumption, peakDemand, count: 1 }
-      } else {
-        acc[key].consumption += consumption
-        acc[key].peakDemand = Math.max(acc[key].peakDemand, peakDemand)
-        acc[key].count += 1
-      }
+      if (!acc[key]) acc[key] = { consumption: 0 }
+      acc[key].consumption += item.kwh
       return acc
     }, {})
 
-    return Object.entries(grouped).map(([month, value]) => ({
+    const monthlyArray = Object.entries(grouped).map(([month, val]) => ({
       date: month,
-      actual: Number(value.consumption.toFixed(1)),
-      estimated: 0,
+      actual: Number(val.consumption.toFixed(1)),
+    }))
+
+    // Cari rata-rata pemakaian bulanan
+    const totalMonthly = monthlyArray.reduce((sum, item) => sum + item.actual, 0)
+    const avgMonthly = totalMonthly / monthlyArray.length
+
+    return monthlyArray.map((item) => ({
+      ...item,
+      // Logika: Kalau pemakaian bulan ini di bawah rata-rata, isi selisihnya ke 'estimated'
+      estimated: item.actual < avgMonthly ? Number((avgMonthly - item.actual).toFixed(1)) : 0,
     }))
   }, [overview])
 
   const dailyLogData = useMemo(() => {
-    if (!overview) return fallbackDailyLogData
+    if (!overview) return []
 
     return overview.series.map((item) => ({
       date: new Date(item.ts).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
@@ -173,7 +125,7 @@ export default function EnergyMonitoringPage() {
   }, [overview])
 
   const monthlyLogData = useMemo(() => {
-    if (!overview) return fallbackMonthlyLogData
+    if (!overview) return []
 
     const grouped = overview.series.reduce<Record<string, { consumption: number; peakDemand: number }>>((acc, item) => {
       const month = new Date(item.ts).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
@@ -210,37 +162,114 @@ export default function EnergyMonitoringPage() {
     return "All Time"
   }
 
-  // LOGIC: Filter dan Sort Data Tabel
-  const getFilteredAndSortedData = () => {
-    // 1. Pilih dataset berdasarkan viewMode
-    let data = viewMode === "daily" ? [...dailyLogData] : [...monthlyLogData]
+  const [selectedMonthYear, setSelectedMonthYear] = useState<string>("all") 
 
-    // 2. Filter by Date Range (Memotong array sesuai jumlah yang diminta)
-    if (dateRange === "7") {
-      data = data.slice(0, viewMode === "daily" ? 7 : 3) 
-    } else if (dateRange === "30") {
-      data = data.slice(0, viewMode === "daily" ? 30 : 6)
+  // MASTER FILTER: satu sumber data untuk grafik dan tabel
+  const filteredData = useMemo(() => {
+    if (!overview || !overview.series) return []
+
+    if (viewMode === "daily") {
+      // Build daily items from series
+      let data = overview.series.map((s) => {
+        const d = new Date(s.ts)
+        const consumption = Number(s.kwh.toFixed(1))
+        return {
+          ts: s.ts,
+          year: d.getFullYear(),
+          month: d.getMonth() + 1,
+          dateISO: d.toISOString(),
+          date: d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }),
+          consumption,
+          peakDemand: Number((s.kwh / 8).toFixed(1)),
+          status: s.kwh > 65 ? 'High Peak Detected' : 'Normal',
+          statusType: s.kwh > 65 ? 'warning' : 'normal',
+        }
+      })
+
+      // Status filter
+      if (filterStatus !== 'all') data = data.filter(d => d.statusType === filterStatus)
+
+      // Specific month filter has priority
+      if (selectedMonthYear !== 'all') {
+        const [y, m] = selectedMonthYear.split('-').map(Number)
+        data = data.filter(d => d.year === y && d.month === m)
+      }
+
+      // Determine sorting comparator based on sortBy
+      if (sortBy === 'consumption') data.sort((a, b) => b.consumption - a.consumption)
+      else if (sortBy === 'peakDemand') data.sort((a, b) => b.peakDemand - a.peakDemand)
+      else data.sort((a, b) => new Date(b.dateISO).getTime() - new Date(a.dateISO).getTime())
+
+      // If not filtering a specific month, apply dateRange slicing (keep highest/peak order when sorted by those keys)
+      if (selectedMonthYear === 'all') {
+        if (dateRange === '7') data = data.slice(0, 7)
+        else if (dateRange === '30') data = data.slice(0, 30)
+      }
+
+      return data
     }
 
-    // 3. Filter by Status
-    if (filterStatus !== "all") {
-      data = data.filter(item => item.statusType === filterStatus)
-    }
+    // Monthly view: aggregate by month
+    const grouped: Record<string, { year: number; month: number; consumption: number; peakDemand: number }> = {}
+    overview.series.forEach((s) => {
+      const d = new Date(s.ts)
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+      if (!grouped[key]) grouped[key] = { year: d.getFullYear(), month: d.getMonth()+1, consumption: 0, peakDemand: 0 }
+      grouped[key].consumption += s.kwh
+      grouped[key].peakDemand = Math.max(grouped[key].peakDemand, s.kwh / 8)
+    })
 
-    // 4. Sort data
-    if (sortBy === "date") {
-      data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    } else if (sortBy === "consumption") {
-      data.sort((a, b) => b.consumption - a.consumption)
-    } else if (sortBy === "peakDemand") {
-      data.sort((a, b) => b.peakDemand - a.peakDemand)
+    let data = Object.entries(grouped).map(([key, val]) => ({
+      key,
+      date: new Date(val.year, val.month-1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      year: val.year,
+      month: val.month,
+      consumption: Number(val.consumption.toFixed(1)),
+      peakDemand: Number(Math.max(3, Number(val.peakDemand.toFixed(1)))),
+      status: val.consumption > 1300 ? 'Warning: Approaching Limit' : 'Normal',
+      statusType: val.consumption > 1300 ? 'warning' : 'normal',
+    }))
+
+    // Status filter
+    if (filterStatus !== 'all') data = data.filter(d => d.statusType === filterStatus)
+
+    // Specific month filter has priority
+    if (selectedMonthYear !== 'all') {
+      const [y, m] = selectedMonthYear.split('-').map(Number)
+      data = data.filter(d => d.year === y && d.month === m)
+    } else {
+      // Sorting
+      if (sortBy === 'consumption') data.sort((a, b) => b.consumption - a.consumption)
+      else if (sortBy === 'peakDemand') data.sort((a, b) => b.peakDemand - a.peakDemand)
+      else data.sort((a, b) => {
+        // sort by year-month desc
+        const aKey = `${a.year}-${String(a.month).padStart(2,'0')}`
+        const bKey = `${b.year}-${String(b.month).padStart(2,'0')}`
+        return bKey.localeCompare(aKey)
+      })
+
+      // Slice by dateRange (monthly counts)
+      if (dateRange === '7') data = data.slice(0, 3)
+      else if (dateRange === '30') data = data.slice(0, 6)
     }
 
     return data
-  }
+  }, [overview, viewMode, dateRange, selectedMonthYear, filterStatus, sortBy])
+  // LOGIC: Sesuaikan grafik dengan filter rentang waktu
+  const activeChartData = useMemo(() => {
+    if (!filteredData || filteredData.length === 0) return []
 
-  const filteredData = getFilteredAndSortedData()
-  const activeChartData = viewMode === "daily" ? dailyChartData : monthlyChartData
+    if (viewMode === 'daily') {
+      const points = filteredData.map((d) => ({ date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: '2-digit' }), actual: d.consumption, estimated: 0 }))
+      // chronological order for chart
+      return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    }
+
+    // monthly view
+    const points = filteredData.map((d) => ({ date: d.date, actual: d.consumption, estimated: 0 }))
+    // sort months chronological
+    return points.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [filteredData, viewMode])
 
   const handleClearFilters = () => {
     setSortBy(null)
@@ -250,7 +279,49 @@ export default function EnergyMonitoringPage() {
     setIsDateFilterOpen(false)
   }
 
+  const availableMonths = useMemo(() => {
+  if (!overview) return []
+  const months = new Set<string>()
+  
+  overview.series.forEach(item => {
+    const d = new Date(item.ts)
+    // Format YYYY-MM
+    months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  })
+  
+  // Kembalikan array terurut dari yang terbaru (menurun)
+  return Array.from(months).sort((a, b) => b.localeCompare(a))
+}, [overview])
+
   const hasActiveFilters = sortBy !== null || filterStatus !== "all" || dateRange !== "30"
+
+  // KALKULASI UNTUK 3 KARTU METRIK ATAS
+  const cardMetrics = useMemo(() => {
+    if (!filteredData || filteredData.length === 0) {
+      return { total: 0, average: 0, peak: 0, peakDate: "-" }
+    }
+
+    // 1. Total Konsumsi
+    const total = filteredData.reduce((sum, item) => sum + item.consumption, 0)
+    
+    // 2. Rata-rata Konsumsi
+    const average = total / filteredData.length
+
+    // 3. Peak Demand Tertinggi beserta Tanggalnya
+    let maxPeakItem = filteredData[0]
+    filteredData.forEach(item => {
+      if (item.peakDemand > maxPeakItem.peakDemand) {
+        maxPeakItem = item
+      }
+    })
+
+    return {
+      total,
+      average,
+      peak: maxPeakItem.peakDemand,
+      peakDate: maxPeakItem.date
+    }
+  }, [filteredData])
 
   if (loading) {
     return (
@@ -321,7 +392,7 @@ export default function EnergyMonitoringPage() {
                   {dateRange === "7" && <Check className="h-4 w-4 text-blue-600" />}
                 </button>
                 <button 
-                  onClick={() => { setDateRange("30"); setIsDateFilterOpen(false); }}
+                  onClick={() => { setDateRange("30"); setSelectedMonthYear("all"); setIsDateFilterOpen(false); }}
                   className="flex items-center justify-between w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   {viewMode === "daily" ? "Last 30 Days" : "Last 6 Months"}
@@ -329,7 +400,7 @@ export default function EnergyMonitoringPage() {
                 </button>
                 <div className="border-t my-1"></div>
                 <button 
-                  onClick={() => { setDateRange("all"); setIsDateFilterOpen(false); }}
+                  onClick={() => { setDateRange("all"); setSelectedMonthYear("all"); setIsDateFilterOpen(false); }}
                   className="flex items-center justify-between w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   All Time
@@ -338,7 +409,23 @@ export default function EnergyMonitoringPage() {
               </div>
             )}
           </div>
-
+          <select 
+  className="h-9 rounded-md border border-slate-200 px-3 text-sm font-medium text-slate-600 bg-white"
+  value={selectedMonthYear}
+  onChange={(e) => {
+    setSelectedMonthYear(e.target.value)
+    setDateRange("all") // Otomatis matikan filter '7 days/30 days' jika milih bulan
+  }}
+>
+  <option value="all">All Months</option>
+  {availableMonths.map(my => {
+    const [y, m] = my.split('-')
+    const monthName = new Date(Number(y), Number(m)-1).toLocaleString('default', { month: 'long' })
+    return (
+      <option key={my} value={my}>{monthName} {y}</option>
+    )
+  })}
+</select>
           {/* Export Button */}
           <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm">
             <Download className="mr-2 h-4 w-4" />
@@ -348,28 +435,34 @@ export default function EnergyMonitoringPage() {
       </div>
 
       {/* 3 Top Metric Cards (Statik untuk demo, namun labelnya berubah) */}
+      {/* 3 Top Metric Cards */}
       <div className="grid gap-4 md:grid-cols-3">
+        {/* Card 1: Total Consumption */}
         <Card className="bg-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-              {viewMode === "daily" ? "Total Consumption (MTD)" : "Total Consumption (YTD)"}
+              {viewMode === "daily" ? "Total Consumption (Filtered)" : "Total Consumption (Filtered)"}
             </CardTitle>
             <Zap className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-900">{viewMode === "daily" ? "1,245" : "15,840"}</span>
+              {/* Tampilkan nilai total dinamis */}
+              <span className="text-2xl font-bold text-slate-900">
+                {cardMetrics.total.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+              </span>
               <span className="text-sm font-medium text-slate-500">kWh</span>
             </div>
+            {/* Note: Persentase tren sementara disembunyikan/distatiskan karena butuh API pembanding terpisah */}
             <div className="mt-2">
-              <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold">
-                <TrendingUp className="h-3 w-3" />
-                {viewMode === "daily" ? "+4.2% vs last 30 days" : "+1.5% vs last year"}
+              <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-500 px-2 py-0.5 rounded text-[10px] font-bold">
+                Data based on current filter
               </span>
             </div>
           </CardContent>
         </Card>
 
+        {/* Card 2: Average Use */}
         <Card className="bg-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
@@ -379,12 +472,16 @@ export default function EnergyMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-900">{viewMode === "daily" ? "41.5" : "1,320"}</span>
+              {/* Tampilkan nilai rata-rata dinamis */}
+              <span className="text-2xl font-bold text-slate-900">
+                {cardMetrics.average.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+              </span>
               <span className="text-sm font-medium text-slate-500">{viewMode === "daily" ? "kWh/day" : "kWh/mo"}</span>
             </div>
           </CardContent>
         </Card>
 
+        {/* Card 3: Peak Demand */}
         <Card className="bg-white">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Peak Demand</CardTitle>
@@ -392,11 +489,15 @@ export default function EnergyMonitoringPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-slate-900">{viewMode === "daily" ? "6.2" : "7.1"}</span>
+              {/* Tampilkan nilai peak tertinggi dinamis */}
+              <span className="text-2xl font-bold text-slate-900">
+                {cardMetrics.peak.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+              </span>
               <span className="text-sm font-medium text-slate-500">kW</span>
             </div>
+            {/* Tampilkan tanggal kapan peak itu terjadi */}
             <p className="text-xs text-slate-500 mt-2 font-medium">
-              {viewMode === "daily" ? "Recorded on Oct 14" : "Recorded on Sep 2023"}
+              Recorded on {cardMetrics.peakDate}
             </p>
           </CardContent>
         </Card>
