@@ -18,8 +18,7 @@ def _parse_room_ids(room_ids: list[str] | str) -> list[str]:
 
 
 def _build_table(rows: list[dict[str, Any]], metric_label: str) -> str:
-    lines = [f"## Perbandingan Kamar ({metric_label})"]
-    lines.append("")
+    lines = [f"## Perbandingan Kamar ({metric_label})", ""]
     lines.append("| Peringkat | Kamar | Penghuni | kWh | Tagihan | Orang | kWh/org |")
     lines.append("|---|---|---|---|---|---|---|")
     for i, row in enumerate(rows, start=1):
@@ -28,10 +27,58 @@ def _build_table(rows: list[dict[str, Any]], metric_label: str) -> str:
             f"{row['kwh']:.1f} | {_format_idr(row['idr'])} | "
             f"{row['occupants']} | {row['per_capita']:.1f} |"
         )
-    lines.append("")
     total_kwh = sum(r["kwh"] for r in rows)
     total_idr = sum(r["idr"] for r in rows)
-    lines.append(f"**Total:** {total_kwh:.1f} kWh — {_format_idr(total_idr)}")
+    lines.extend(
+        [
+            "",
+            f"**Total:** {total_kwh:.1f} kWh - {_format_idr(total_idr)}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _build_insight(rows: list[dict[str, Any]], active_metric: str) -> str:
+    if not rows:
+        return ""
+
+    total_top = max(rows, key=lambda item: item["kwh"])
+    per_capita_top = max(rows, key=lambda item: item["per_capita"])
+    bill_top = max(rows, key=lambda item: item["idr"])
+
+    total_name = total_top["tenant"] or total_top["room_id"]
+    per_capita_name = per_capita_top["tenant"] or per_capita_top["room_id"]
+    bill_name = bill_top["tenant"] or bill_top["room_id"]
+
+    lines = ["### Insight", ""]
+    lines.append(
+        f"- Secara total konsumsi, **{total_top['room_id']} ({total_name})** paling tinggi "
+        f"dengan {total_top['kwh']:.1f} kWh."
+    )
+
+    if per_capita_top["room_id"] == total_top["room_id"]:
+        lines.append(
+            f"- Secara per penghuni, **{per_capita_top['room_id']} ({per_capita_name})** juga paling tinggi "
+            f"dengan {per_capita_top['per_capita']:.1f} kWh/orang."
+        )
+    else:
+        lines.append(
+            f"- Namun per penghuni, **{per_capita_top['room_id']} ({per_capita_name})** lebih boros "
+            f"dengan {per_capita_top['per_capita']:.1f} kWh/orang."
+        )
+
+    if bill_top["room_id"] != total_top["room_id"]:
+        lines.append(
+            f"- Jika dilihat dari tagihan, **{bill_top['room_id']} ({bill_name})** yang paling besar "
+            f"dengan {_format_idr(bill_top['idr'])}."
+        )
+
+    if active_metric == "per_capita":
+        lines.append(
+            "- Ranking utama disusun berdasarkan kWh per orang, supaya kamar sharing tetap dinilai lebih adil."
+        )
+
     lines.append("")
     return "\n".join(lines)
 
@@ -92,15 +139,17 @@ def _query_by_period(db, selected_room_ids: list[str], period: str, active_metri
         if not tenant:
             tenant = "Belum ada penghuni"
 
-        rows.append({
-            "room_id": room_id,
-            "tenant": tenant,
-            "kwh": total_kwh_f,
-            "idr": total_idr_f,
-            "occupants": occupants,
-            "per_capita": per_capita,
-            "rank_value": rank_value,
-        })
+        rows.append(
+            {
+                "room_id": room_id,
+                "tenant": tenant,
+                "kwh": total_kwh_f,
+                "idr": total_idr_f,
+                "occupants": occupants,
+                "per_capita": per_capita,
+                "rank_value": rank_value,
+            }
+        )
 
     rows.sort(key=lambda item: item["rank_value"], reverse=True)
     return rows
@@ -146,15 +195,17 @@ def _query_latest_cumulative(db, selected_room_ids: list[str], active_metric: st
         else:
             rank_value = total_kwh
 
-        rows.append({
-            "room_id": room_id,
-            "tenant": ", ".join(users_by_room.get(room_id, [])) or room.tenant_name or "Belum ada penghuni",
-            "kwh": total_kwh,
-            "idr": total_idr,
-            "occupants": occupants,
-            "per_capita": per_capita,
-            "rank_value": rank_value,
-        })
+        rows.append(
+            {
+                "room_id": room_id,
+                "tenant": ", ".join(users_by_room.get(room_id, [])) or room.tenant_name or "Belum ada penghuni",
+                "kwh": total_kwh,
+                "idr": total_idr,
+                "occupants": occupants,
+                "per_capita": per_capita,
+                "rank_value": rank_value,
+            }
+        )
 
     rows.sort(key=lambda item: item["rank_value"], reverse=True)
     return rows
@@ -162,13 +213,7 @@ def _query_latest_cumulative(db, selected_room_ids: list[str], active_metric: st
 
 @tool
 def compare_rooms(room_ids: list[str] | str, metric: str = "kwh", period: str | None = None) -> str:
-    """Bandingkan beberapa kamar berdasarkan kWh, IDR, atau pemakaian per orang.
-
-    Args:
-        room_ids: Daftar room_id, contoh: ["R-101","R-102"] atau "R-101,R-102".
-        metric: "kwh" (default), "idr", atau "per_capita".
-        period: Periode "YYYY-MM" untuk bulan tertentu atau "YYYY" untuk satu tahun.
-    """
+    """Bandingkan beberapa kamar berdasarkan kWh, IDR, atau pemakaian per orang."""
     from app.db.database import get_db
 
     selected_room_ids = _parse_room_ids(room_ids)
@@ -198,8 +243,11 @@ def compare_rooms(room_ids: list[str] | str, metric: str = "kwh", period: str | 
         }[active_metric]
 
         if period:
-            metric_label += f" — {period}"
+            metric_label += f" - {period}"
 
-        return _build_table(rows, metric_label)
+        table = _build_table(rows, metric_label)
+        insight = _build_insight(rows, active_metric)
+
+        return f"{table}\n{insight}".strip() if insight else table
     finally:
         db_gen.close()

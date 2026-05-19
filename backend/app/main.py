@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.agent.scheduler import start_scheduler
+from app.agent.agent import configure_agent_console_logging
+from app.agent.scheduler import start_scheduler, stop_scheduler
 from app.api import agent
 from app.config import get_settings
 
@@ -47,6 +48,7 @@ async def health() -> dict[str, str]:
 
 @app.on_event("startup")
 async def startup() -> None:
+    configure_agent_console_logging()
     # Create tables (simple MVP; replace with Alembic later)
     try:
         from app.db.init_db import init_db  # noqa: E402
@@ -57,3 +59,7 @@ async def startup() -> None:
         pass
 
     start_scheduler()
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    stop_scheduler()

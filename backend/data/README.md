@@ -7,18 +7,20 @@ This folder contains database seed scripts that import backend SQLAlchemy models
 Run from the repository root:
 
 ```powershell
-python data\preprocess.py
-python backend\data\seed.py --clear
+python data\generate_synthetic.py
+python backend\data\seed.py --clear --processed-dir data\processed_new
 ```
 
 `backend\data\seed.py` calls `app.db.init_db.init_db()` by default, so tables are created before the CSV rows are inserted.
+
+The synthetic generator stops at `2026-05-19 16:00 WIB`. It keeps the existing `billing_records` schema intact and shifts `generated_at` to the month-end timestamp for the generated billing rows, so the demo countdown stays aligned with the end of May 2026 without adding columns.
 
 ## Inputs
 
 `seed.py` reads ERD-shaped CSV files from:
 
 ```text
-data/processed/
+data/processed_new/
 ```
 
 Expected files:

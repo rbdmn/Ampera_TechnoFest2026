@@ -116,15 +116,6 @@ function CellContent({ text }: { text: string }) {
   return <span>{clean}</span>
 }
 
-function EnergyTip({ text }: { text: string }) {
-  return (
-    <div className="flex gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs">
-      <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-      <div className="text-amber-900 leading-relaxed">{text}</div>
-    </div>
-  )
-}
-
 function extractText(node: React.ReactNode): string {
   if (typeof node === "string") return node
   if (typeof node === "number") return String(node)
@@ -183,10 +174,11 @@ function parseTableLines(text: string): string[][] | null {
   return rows
 }
 
-function preprocessContent(content: string): {
-  markdown: string
-  tables: { rows: string[][]; insertAt: number }[]
-} {
+type ContentSegment =
+  | { type: "markdown"; content: string }
+  | { type: "table"; rows: string[][] }
+
+function preprocessContent(content: string): ContentSegment[] {
   let text = content
 
   text = formatRupiah(text)
@@ -217,8 +209,18 @@ function preprocessContent(content: string): {
   text = text.replace(/\|\s*\|\s*/g, " |\n| ")
 
   const paragraphs = text.split(/\n\s*\n/).filter(Boolean)
-  const tables: { rows: string[][]; insertAt: number }[] = []
-  const markdownParts: string[] = []
+  const segments: ContentSegment[] = []
+
+  const pushMarkdown = (value: string) => {
+    const content = value.trim()
+    if (!content) return
+    const last = segments[segments.length - 1]
+    if (last?.type === "markdown") {
+      last.content = `${last.content}\n\n${content}`
+      return
+    }
+    segments.push({ type: "markdown", content })
+  }
 
   for (const para of paragraphs) {
     const lines = para
@@ -236,29 +238,35 @@ function preprocessContent(content: string): {
     if (tableLines.length >= 2) {
       const rows = parseTableLines(tableLines.join("\n"))
       if (rows && rows.length >= 2) {
-        tables.push({ rows, insertAt: tables.length })
-
         const nonTableLines = lines.filter((l) => !tableLines.includes(l))
         if (nonTableLines.length > 0) {
-          markdownParts.push(nonTableLines.join("\n"))
+          pushMarkdown(nonTableLines.join("\n"))
         }
+        segments.push({ type: "table", rows })
         continue
       }
     }
 
-    markdownParts.push(para)
+    pushMarkdown(para)
   }
 
-  return { markdown: markdownParts.join("\n\n"), tables }
+  return segments
 }
 
 export default function ChatMarkdown({ content }: { content: string }) {
-  const { markdown, tables } = useMemo(() => preprocessContent(content), [content])
+  const segments = useMemo(() => preprocessContent(content), [content])
 
   return (
     <div className="space-y-3">
-      <ReactMarkdown
-        components={{
+      {segments.map((segment, index) => {
+        if (segment.type === "table") {
+          return <AITable key={`table-${index}`} rows={segment.rows} />
+        }
+
+        return (
+          <ReactMarkdown
+            key={`markdown-${index}`}
+            components={{
           h2: ({ children }) => {
             const text = extractText(children)
             const Icon = pickIcon(text)
@@ -393,18 +401,12 @@ export default function ChatMarkdown({ content }: { content: string }) {
               {children}
             </code>
           ),
-        }}
-      >
-        {markdown}
-      </ReactMarkdown>
-
-      {tables.length > 0 && (
-        <div className="space-y-3">
-          {tables.map((t, i) => (
-            <AITable key={i} rows={t.rows} />
-          ))}
-        </div>
-      )}
+            }}
+          >
+            {segment.content}
+          </ReactMarkdown>
+        )
+      })}
     </div>
   )
 }
