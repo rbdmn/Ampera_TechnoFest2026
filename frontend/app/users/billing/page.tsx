@@ -183,7 +183,7 @@ export default function UserBillingPage() {
     formData.append("proof_file", proofFile) // Berkas gambar/PDF hasil input file
 
     // Tembak ke endpoint pembayaran (Gunakan method POST/PATCH sesuai kesepakatan)
-    const res = await fetch(`http://localhost:8000/billing/invoices/${invoiceId}/pay`, {
+    const res = await apiFetch(`/billing/invoices/${invoiceId}/pay`, {
       method: "POST",
       headers: {
         // Jangan set 'Content-Type': 'application/json' di sini, 
