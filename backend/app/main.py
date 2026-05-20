@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +25,7 @@ app.add_middleware(
 )
 
 # Serve uploaded files (e.g., profile photos)
+Path(settings.uploads_dir).mkdir(parents=True, exist_ok=True)
 app.mount(settings.uploads_public_path, StaticFiles(directory=settings.uploads_dir), name="static")
 
 # --- Routers ---
