@@ -8,7 +8,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-111111?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://python.langchain.com/)
-[![Ollama](https://img.shields.io/badge/Ollama-FF6A3D?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.com/)
+[![Groq](https://img.shields.io/badge/Groq-1E1E1E?style=for-the-badge&logo=groq&logoColor=white)](https://groq.com/)
 
 ---
 
@@ -23,7 +23,7 @@ Ampera AI adalah platform manajemen energi berbasis AI Agent otonom untuk hunian
 | Fitur | Fungsi |
 |---|---|
 | Autonomous Reasoning Loop | Agent membaca data konsumsi, menganalisis pola dengan `Pandas`, lalu menentukan apakah perlu alert, laporan, atau insight. |
-| Hybrid Ollama Configuration | Default lokal memakai `OLLAMA_BASE_URL=http://localhost:11434` dan `OLLAMA_MODEL=llama3`, dengan fallback environment yang aman. |
+| Groq LLM Integration | Menggunakan Groq API (`llama3-8b-8192`, free tier) sebagai LLM untuk reasoning agent. |
 | Background Automation Scheduler | Scheduler backend berjalan otomatis untuk cek threshold dan memicu aksi tanpa intervensi manual. |
 | Transparent Billing Insight | Laporan harian, bulanan, dan tahunan dirapikan dalam format markdown yang mudah dibaca. |
 | Fair Room Comparison | AI membedakan konsumsi total dan konsumsi per penghuni agar evaluasi kamar lebih adil. |
@@ -69,7 +69,7 @@ PostgreSQL
 |---|---|
 | Frontend | Next.js 16, React 19, Tailwind, Recharts |
 | Backend | FastAPI, Python, Pydantic Settings |
-| Agentic AI | LangChain, Ollama |
+| Agentic AI | LangChain, Groq |
 | Database | PostgreSQL + SQLAlchemy |
 | Data Processing | Pandas |
 

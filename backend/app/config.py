@@ -27,11 +27,10 @@ class Settings(BaseSettings):
     tariff_per_kwh: float = 1444.70
     default_limit_kwh: float = 50.0
 
-    # --- LLM/Agent ---
-    ollama_model: str = "llama3"
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_api_key: str | None = None
-    ollama_temperature: float = 0.0
+    # --- LLM/Agent (Groq) ---
+    llm_model: str = "llama3-8b-8192"
+    groq_api_key: str | None = None
+    llm_temperature: float = 0.0
     enable_scheduler: bool = False
 
     # --- Uploads (profile photo) ---
@@ -48,18 +47,14 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    @field_validator("ollama_base_url", "ollama_model", mode="before")
+    @field_validator("llm_model", mode="before")
     @classmethod
-    def _fallback_ollama_settings(cls, value: str | None, info):
-        """Normalize missing or blank Ollama settings to safe local defaults."""
+    def _fallback_llm_model(cls, value: str | None):
         if isinstance(value, str):
             value = value.strip()
         if value:
             return value
-
-        if info.field_name == "ollama_base_url":
-            return "http://localhost:11434"
-        return "llama3"
+        return "llama3-8b-8192"
 
     @field_validator("uploads_dir", mode="before")
     @classmethod

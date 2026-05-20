@@ -7,5 +7,5 @@ psycopg[binary]==3.2.10
 email-validator==2.2.0
 pandas==2.2.3
 langchain==0.3.14
-langchain-ollama==0.2.2
+langchain-groq==0.2.4
 python-multipart>=0.0.9

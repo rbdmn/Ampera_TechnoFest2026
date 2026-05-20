@@ -44,30 +44,24 @@ def configure_agent_console_logging() -> None:
     logging.getLogger("ampera.agent").setLevel(logging.INFO)
     logging.getLogger("ampera.agent.chat").setLevel(logging.INFO)
     logging.getLogger("langchain").setLevel(logging.INFO)
-    logging.getLogger("langchain_ollama").setLevel(logging.INFO)
+    logging.getLogger("langchain_groq").setLevel(logging.INFO)
     logger.info("Agent console logging configured.")
 
 
 def build_llm():
-    """Create the LangChain chat model used by the agent foundation."""
-    from langchain_ollama import ChatOllama
+    """Create the LangChain chat model (Groq)."""
+    from langchain_groq import ChatGroq
 
     _enable_langchain_debug()
     settings = get_settings()
-    client_kwargs = {}
-    if settings.ollama_api_key:
-        client_kwargs["headers"] = {
-            "Authorization": f"Bearer {settings.ollama_api_key}",
-        }
 
-    return ChatOllama(
-        model=settings.ollama_model,
-        base_url=settings.ollama_base_url,
-        temperature=settings.ollama_temperature,
+    return ChatGroq(
+        model=settings.llm_model,
+        groq_api_key=settings.groq_api_key,
+        temperature=settings.llm_temperature,
         verbose=True,
         callbacks=[StdOutCallbackHandler()],
-        tags=["ampera-ai", "ollama"],
-        client_kwargs=client_kwargs,
+        tags=["ampera-ai", "groq"],
     )
 
 
@@ -273,7 +267,7 @@ def _db_agent_loop(tariff: float, dry_run: bool = False) -> dict[str, object]:
 
 
 def build_llm_resolution(agent_result: dict[str, object]) -> dict[str, object]:
-    """Ask Ollama to produce the final operational resolution from DB tool output."""
+    """Ask LLM to produce the final operational resolution from DB tool output."""
     compact_rooms = []
     for item in agent_result.get("room_results", []):
         if not isinstance(item, dict):
@@ -332,13 +326,13 @@ def build_llm_resolution(agent_result: dict[str, object]) -> dict[str, object]:
         content = getattr(response, "content", str(response))
         return {
             "status": "ok",
-            "model": get_settings().ollama_model,
+            "model": get_settings().llm_model,
             "resolution": content,
         }
     except Exception as exc:
         return {
             "status": "error",
-            "model": get_settings().ollama_model,
+            "model": get_settings().llm_model,
             "error": str(exc),
             "resolution": None,
         }
@@ -351,8 +345,8 @@ def run_ampera_agent(
 ) -> dict[str, object]:
     """Run one Ampera agent loop.
 
-    The agent keeps the old Ollama foundation while preferring the pulled
-    DB-backed implementation when DATABASE_URL is configured.
+    The agent uses Groq LLM while preferring the DB-backed implementation
+    when DATABASE_URL is configured.
     """
     settings = get_settings()
     active_tariff = float(tariff if tariff is not None else settings.tariff_per_kwh)
@@ -361,7 +355,7 @@ def run_ampera_agent(
     try:
         _ = build_llm()
     except Exception:
-        # The loop itself is deterministic; Ollama can be offline during backend tests.
+        # The loop itself is deterministic; LLM can be offline during backend tests.
         pass
 
     if not settings.database_url:

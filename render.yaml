@@ -17,7 +17,7 @@ services:
         value: production
       - key: ENABLE_SCHEDULER
         value: "false"       # free tier spin down, scheduler tidak reliable
-      - key: OLLAMA_BASE_URL
-        value: ""            # kosong = agent fallback ke mock
-      - key: OLLAMA_MODEL
-        value: ""
+      - key: GROQ_API_KEY
+        sync: false          # isi manual di Render dashboard
+      - key: LLM_MODEL
+        value: "llama3-8b-8192"

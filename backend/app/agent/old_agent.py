@@ -5,7 +5,7 @@ from app.agent.tools import (
     get_mock_consumption,
     send_notification,
 )
-from langchain_ollama import ChatOllama
+from langchain_groq import ChatGroq
 
 
 DEFAULT_TARIFF_IDR = 1444.7
@@ -14,11 +14,7 @@ HIGH_USAGE_KWH = 25
 
 def build_llm():
     """Create the LangChain chat model used by the agent foundation."""
-    # Run locally with:
-    #   ollama serve
-    # Install the model with:
-    #   ollama pull gpt-oss:120b-cloud
-    return ChatOllama(model="gpt-oss:120b-cloud", temperature=0)
+    return ChatGroq(model="llama3-8b-8192", temperature=0)
 
 
 def run_ampera_agent(tariff: float = DEFAULT_TARIFF_IDR) -> dict[str, object]:

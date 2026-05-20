@@ -12,9 +12,7 @@ from app.agent.agent import run_ampera_agent
 
 
 def main() -> None:
-    # Before running with Ollama:
-    #   ollama serve
-    #   ollama pull gpt-oss:120b-cloud
+    # Make sure GROQ_API_KEY is set in .env or environment.
     result = run_ampera_agent()
 
     print(result)
