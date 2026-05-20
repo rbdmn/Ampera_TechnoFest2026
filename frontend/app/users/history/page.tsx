@@ -244,6 +244,51 @@ export default function UserEnergyHistoryPage() {
     return { total, average, peak: maxPeakItem.peakDemand, peakDate: maxPeakItem.date }
   }, [filteredData])
 
+  const email = useMemo(() => getEmail() ?? "", [])
+
+  const onExportPdf = async () => {
+    try {
+      const storedEmail = getEmail()
+      if (!storedEmail) {
+        setError("User email tidak ditemukan. Silakan login kembali.")
+        return
+      }
+
+      // Use the same range we use for fetching overview.
+      const startDate = "2020-01-01T00:00:00Z"
+      const endDate = new Date().toISOString()
+
+      const qs = new URLSearchParams({
+        email: storedEmail,
+        interval: viewMode === "monthly" ? "day" : "day",
+        start: startDate,
+        end: endDate,
+      })
+
+      // Use apiFetch so BASE url + auth headers are consistent.
+      const res = await apiFetch(`/reports/user-history.pdf?${qs.toString()}`, {
+        method: "GET",
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || "Gagal export PDF")
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `consumption-history_${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (e: any) {
+      setError(e?.message || "Gagal export PDF")
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-[1400px] mx-auto py-20 text-center text-slate-600">
@@ -337,7 +382,7 @@ export default function UserEnergyHistoryPage() {
             })}
           </select>
 
-          <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm">
+          <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm" onClick={onExportPdf}>
             <Download className="mr-2 h-4 w-4" />
             Export PDF
           </Button>

@@ -31,6 +31,7 @@ app.mount(settings.uploads_public_path, StaticFiles(directory=settings.uploads_d
 # --- Routers ---
 from app.api import alerts, auth, billing, consumption, occupancies, rooms, tenants  # noqa: E402
 from app.api import billing_admin, dashboard, rooms_admin  # noqa: E402
+from app.api import reports  # noqa: E402
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 # Register admin/static room endpoints first to avoid /{room_id} catching /table, /summary, etc.
@@ -43,6 +44,7 @@ app.include_router(billing.router, prefix="/billing", tags=["billing"])
 app.include_router(billing_admin.router, prefix="/billing", tags=["billing"])
 app.include_router(alerts.router, prefix="/alerts", tags=["alerts"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+app.include_router(reports.router, prefix="/reports", tags=["reports"])
 app.include_router(agent.router, prefix="/agent", tags=["agent"])
 
 
