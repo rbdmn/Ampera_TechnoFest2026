@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     default_limit_kwh: float = 50.0
 
     # --- LLM/Agent (Groq) ---
-    llm_model: str = "llama3-8b-8192"
+    llm_model: str = "openai/gpt-oss-120b"
     groq_api_key: str | None = None
     llm_temperature: float = 0.0
     enable_scheduler: bool = False
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
             value = value.strip()
         if value:
             return value
-        return "llama3-8b-8192"
+        return "openai/gpt-oss-120b"
 
     @field_validator("uploads_dir", mode="before")
     @classmethod
