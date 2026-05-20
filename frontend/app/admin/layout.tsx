@@ -120,7 +120,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             Help Center
           </Link>
           <Link 
-            href="/admin/logout" 
+            href="/login" 
             className="flex items-center gap-3 px-3 py-2 w-full text-slate-600 hover:bg-slate-50 rounded-md font-medium text-sm transition-colors"
           >
             <LogOut className="h-4 w-4" />
