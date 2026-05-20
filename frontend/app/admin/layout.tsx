@@ -113,13 +113,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </Link>
             </Button>
           <Link 
-            href="/admin/help" 
-            className="flex items-center gap-3 px-3 py-2 w-full text-slate-600 hover:bg-slate-50 rounded-md font-medium text-sm transition-colors"
-          >
-            <HelpCircle className="h-4 w-4" />
-            Help Center
-          </Link>
-          <Link 
             href="/login" 
             className="flex items-center gap-3 px-3 py-2 w-full text-slate-600 hover:bg-slate-50 rounded-md font-medium text-sm transition-colors"
           >
@@ -134,10 +127,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Topbar */}
         <header className="h-16 border-b bg-white flex items-center justify-end px-6 sticky top-0 z-40">
           <div className="flex items-center gap-4">
-            <button className="relative text-slate-500 hover:text-slate-700">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 border border-white"></span>
-            </button>
             Admin
             <Avatar className="h-8 w-8">
               <AvatarImage src="https://github.com/shadcn.png" />
