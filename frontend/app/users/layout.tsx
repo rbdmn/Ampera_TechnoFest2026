@@ -1,7 +1,8 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { 
   LayoutDashboard, 
   Activity, 
@@ -13,12 +14,39 @@ import {
   Bell
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
+import { apiFetch, type ProfileResponse } from "@/lib/api"
+import { getEmail, clearAuth } from "@/lib/auth"
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
 
-  // Fungsi untuk mengecek apakah path saat ini sedang aktif
+  const [profile, setProfile] = useState<ProfileResponse | null>(null)
+  const [profileLoaded, setProfileLoaded] = useState(false)
+
+  useEffect(() => {
+    const email = getEmail()
+    if (!email) {
+      setProfileLoaded(true)
+      return
+    }
+
+    apiFetch(`/auth/me?email=${encodeURIComponent(email)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => setProfile(data))
+      .catch(() => {})
+      .finally(() => setProfileLoaded(true))
+  }, [])
+
+  const initials = profile?.full_name
+    ? profile.full_name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2)
+    : "U"
+
+  const handleLogout = () => {
+    clearAuth()
+    router.push("/login")
+  }
+
   const isActive = (path: string) => {
     return pathname === path || pathname.startsWith(`${path}/`)
   }
@@ -85,7 +113,6 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
             Admin Feedback
           </Link>
 
-          {/* Menu Baru: Notifications */}
           <Link 
             href="/users/notifications" 
             className={`flex items-center gap-3 px-3 py-2 rounded-md font-medium text-sm transition-colors ${
@@ -101,26 +128,10 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
 
         {/* Bottom Actions */}
         <div className="p-4 border-t space-y-2">
-          {/* Tombol AI Agent dengan Active State */}
-          {/* <Button
-            asChild
-            className={`w-full justify-start gap-2 h-11 rounded-xl shadow-md transition-all ${
-              isActive('/users/chat') 
-                ? 'bg-blue-800 text-white ring-2 ring-blue-300 ring-offset-1' // Warna saat halaman chat aktif
-                : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white' // Warna default
-            }`}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-3 py-2 w-full text-slate-600 hover:bg-slate-50 rounded-md font-medium text-sm transition-colors"
           >
-            <Link href="/users/chat">
-              <Bot className="h-4 w-4" />
-              <span>Inquire AI Agent</span>
-            </Link>
-          </Button> */}
-
-          <button className="flex items-center gap-3 px-3 py-2 w-full text-slate-600 hover:bg-slate-50 rounded-md font-medium text-sm transition-colors mt-2">
-            <HelpCircle className="h-4 w-4" />
-            Help Center
-          </button>
-          <button className="flex items-center gap-3 px-3 py-2 w-full text-slate-600 hover:bg-slate-50 rounded-md font-medium text-sm transition-colors">
             <LogOut className="h-4 w-4" />
             Logout
           </button>
@@ -133,16 +144,18 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
         <header className="h-16 border-b bg-white flex items-center justify-end px-6 sticky top-0 z-40">
           <div className="flex items-center gap-4">
             
-            {/* Profil User: Bisa diklik & mengarah ke /users/profile */}
+            {/* Profil User */}
             <Link 
               href="/users/profile" 
               className="flex items-center gap-3 p-1.5 pr-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer border border-transparent hover:border-slate-200"
             >
               <Avatar className="h-8 w-8">
-                <AvatarImage src="https://github.com/shadcn.png" />
-                <AvatarFallback>JD</AvatarFallback>
+                <AvatarImage src={profile?.profile_photo_url || undefined} />
+                <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
-              <span className="text-sm font-semibold text-slate-700 mr-1">Jane Doe</span>
+              <span className="text-sm font-semibold text-slate-700 mr-1">
+                {profile?.full_name || (profileLoaded ? "User" : "...")}
+              </span>
             </Link>
 
           </div>
