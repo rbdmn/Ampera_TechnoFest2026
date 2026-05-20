@@ -309,6 +309,34 @@ Update status invoice.
 ### `GET /billing/invoices/{invoice_id}`
 Invoice detail (admin).
 
+### `GET /billing/my-invoices`
+List invoices untuk user yang sedang login (berdasarkan room_id dari token auth).
+
+**Auth:** User (Bearer token)
+
+**Response (200)**
+```json
+{
+  "data": [
+    {
+      "invoice_id": "BILL-ABC123...",
+      "room_id": "R-101",
+      "period": "2026-05",
+      "kwh_used": 142.5,
+      "rate": 1444.7,
+      "total_amount": 205820.75,
+      "status": "generated",
+      "generated_at": "2026-05-20T12:00:00+00:00"
+    }
+  ],
+  "meta": {
+    "total_items": 12
+  }
+}
+```
+
+**Status values:** `generated` (Unpaid), `sent` (Pending), `paid` (Paid)
+
 ---
 
 ## Alerts
