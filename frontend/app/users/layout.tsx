@@ -59,7 +59,7 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
         {/* Logo Area */}
         <div className="flex items-center gap-2 px-6 h-16 border-b">
           <div>
-            <img src="/logo_text.svg" alt="Ampera Logo" className="h-8 w-auto" />
+            <img src="/Logo_text.svg" alt="Ampera Logo" className="h-8 w-auto" />
           </div>
         </div>
 

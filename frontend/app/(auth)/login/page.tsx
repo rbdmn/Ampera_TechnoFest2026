@@ -64,7 +64,7 @@ export default function LoginPage() {
         {/* Logo Besar */}
         <div className="absolute inset-0 flex items-center justify-center">
           <Image
-            src="/logo_white.svg"
+            src="/Logo_white.svg"
             alt="Ampera Logo"
             width={900}
             height={900}
