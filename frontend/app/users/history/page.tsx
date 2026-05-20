@@ -244,8 +244,6 @@ export default function UserEnergyHistoryPage() {
     return { total, average, peak: maxPeakItem.peakDemand, peakDate: maxPeakItem.date }
   }, [filteredData])
 
-  const email = useMemo(() => getEmail() ?? "", [])
-
   const onExportPdf = async () => {
     try {
       const storedEmail = getEmail()
