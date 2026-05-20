@@ -60,18 +60,13 @@ export default function NotificationsPage() {
   const [data, setData] = useState<AlertOut[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [email, setEmail] = useState<string | undefined>(undefined)
-
-useEffect(() => {
-  if (typeof window !== "undefined") {
-    setEmail(getEmail() ?? undefined)
-  }
-}, [])
 
   async function load() {
     try {
       setLoading(true)
       setError(null)
+
+      const userEmail = getEmail() ?? undefined
 
       const typeFilter =
         activeTab === "Alerts"
@@ -82,7 +77,7 @@ useEffect(() => {
 
       const unreadOnly = activeTab === "Unread"
 
-      const res = await getUserNotifications({ email, type: typeFilter as any, unread_only: unreadOnly, page: 1, limit: 50 })
+      const res = await getUserNotifications({ email: userEmail, type: typeFilter as any, unread_only: unreadOnly, page: 1, limit: 50 })
       setData(res.data)
     } catch (e: any) {
       setError(e?.message ?? "failed_to_load")
@@ -97,7 +92,7 @@ useEffect(() => {
   }, [activeTab])
 
   const markAllAsRead = async () => {
-    await markAllNotificationsRead(email)
+    await markAllNotificationsRead(getEmail() ?? undefined)
     await load()
   }
 
