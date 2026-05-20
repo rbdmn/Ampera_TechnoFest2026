@@ -123,9 +123,18 @@ def _extract_room_ids(message: str) -> list[str]:
     for start, end in re.findall(r"\b(?:R-)?(\d{3})\s*-\s*(?:R-)?(\d{3})\b", message, flags=re.IGNORECASE):
         for number in range(int(start), int(end) + 1):
             found.append(f"R-{number}")
-    for number in re.findall(r"\bR-?(\d{3})\b|\bkamar\s+(\d{3})\b", message, flags=re.IGNORECASE):
-        value = next(item for item in number if item)
-        found.append(f"R-{value}")
+
+    room_patterns = [
+        r"\bR[-\s]?(\d{3})\b",
+        r"\bRoom\s+(\d{3})\b",
+        r"\bKamar\s+(\d{3})\b",
+        r"\broom\s+(\d{3})\b",
+        r"\bkamar\s+(\d{3})\b",
+    ]
+    for pattern in room_patterns:
+        for value in re.findall(pattern, message, flags=re.IGNORECASE):
+            found.append(f"R-{value}")
+
     unique: list[str] = []
     for room_id in found:
         if room_id not in unique:
@@ -241,11 +250,53 @@ def _history_text(history: list[dict[str, str]]) -> str:
     return "\n".join(str(msg.get("content", "")) for msg in history if msg.get("content"))
 
 
+def _parse_iso_timestamp(value: str) -> str | None:
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).isoformat()
+    except ValueError:
+        return None
+
+
+def _extract_notification_targets(message: str, history: list[dict[str, str]]) -> list[dict[str, str | None]]:
+    """Extract room targets and, when present, the source timestamp for each target."""
+    combined_text = f"{message}\n{_history_text(history)}"
+    lines = [line.strip() for line in combined_text.splitlines() if line.strip()]
+    targets: list[dict[str, str | None]] = []
+    seen: set[str] = set()
+
+    for line in lines:
+        room_ids = _extract_room_ids(line)
+        if not room_ids:
+            continue
+        triggered_at = None
+        match = re.search(
+            r"\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)\b",
+            line,
+        )
+        if match:
+            triggered_at = _parse_iso_timestamp(match.group(1))
+
+        for room_id in room_ids:
+            if room_id in seen:
+                continue
+            seen.add(room_id)
+            targets.append({"room_id": room_id, "triggered_at": triggered_at})
+
+    if targets:
+        return targets
+
+    # Fallback for very short confirmation replies: use the full combined text.
+    for room_id in _extract_room_ids(combined_text):
+        if room_id in seen:
+            continue
+        seen.add(room_id)
+        targets.append({"room_id": room_id, "triggered_at": None})
+
+    return targets
+
+
 def _extract_notification_room_ids(message: str, history: list[dict[str, str]]) -> list[str]:
-    room_ids = _extract_room_ids(message)
-    if room_ids:
-        return room_ids
-    return _extract_room_ids(_history_text(history))
+    return [item["room_id"] for item in _extract_notification_targets(message, history)]
 
 
 def _extract_alert_type(message: str, history: list[dict[str, str]]) -> str:
@@ -272,7 +323,7 @@ def _extract_notification_message(message: str, history: list[dict[str, str]], r
 
 
 def _send_confirmed_notifications(
-    room_ids: list[str],
+    targets: list[dict[str, str | None]],
     alert_type: str,
     message: str,
 ) -> str:
@@ -286,18 +337,26 @@ def _send_confirmed_notifications(
         "|---|---|---|---|---|",
     ]
     saved_count = 0
-    for rid in room_ids[:3]:
+    for target in targets:
+        rid = str(target["room_id"])
+        triggered_at = target.get("triggered_at")
         if message.startswith("Peringatan pemakaian listrik untuk kamar "):
             room_message = _extract_notification_message("", [], rid)
         else:
             room_message = message
         logger.info(
-            "[CHAT][TOOLS] send_notification(room_id=%s, alert_type=%s, message=%s)",
+            "[CHAT][TOOLS] send_notification(room_id=%s, alert_type=%s, message=%s, triggered_at=%s)",
             rid,
             alert_type,
             room_message,
+            triggered_at,
         )
-        result = send_notification(room_id=rid, message=room_message, alert_type=alert_type)
+        result = send_notification(
+            room_id=rid,
+            message=room_message,
+            alert_type=alert_type,
+            triggered_at=triggered_at,
+        )
         logger.info("[CHAT][TOOLS][RESULT] send_notification result=%s", result)
         saved_count += 1
         lines.append(
@@ -328,7 +387,8 @@ def _run_tools_for_intent(intent: str, message: str, history: list[dict[str, str
 
     results: list[str] = []
     room_ids = _extract_room_ids(message)
-    notification_room_ids = _extract_notification_room_ids(message, history or [])
+    notification_targets = _extract_notification_targets(message, history or [])
+    notification_room_ids = [item["room_id"] for item in notification_targets]
     period = _extract_period(message)
     report_scope = _extract_report_scope(message)
     history = history or []
@@ -354,7 +414,7 @@ def _run_tools_for_intent(intent: str, message: str, history: list[dict[str, str
                 )
                 results.append(
                     _send_confirmed_notifications(
-                        room_ids=notification_room_ids,
+                        targets=notification_targets,
                         alert_type=alert_type,
                         message=notification_message,
                     )
