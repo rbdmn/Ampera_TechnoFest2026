@@ -15,7 +15,6 @@ import {
 
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { 
   Area, 
   AreaChart, 
@@ -32,17 +31,8 @@ import { getEmail } from "@/lib/auth"
 interface DashboardSeriesItem {
   ts: string
   kwh: number
-}
-
-interface MeterReading {
-  reading_id: string
-  room_id: string
-  reading_value_kwh: number
-  usage_delta_kwh: number
-  period_start: string
-  period_end: string
-  source: string
-  verification_status: string
+  peak_demand_kw: number
+  status: string
 }
 
 interface UserDashboardOverview {
@@ -51,28 +41,47 @@ interface UserDashboardOverview {
     full_name?: string
     email: string
     role: string
+    profile_photo_url?: string | null
   }
   room: {
     room_id: string
-  }
+    tenant_name?: string | null
+  } | null
   range: {
     start: string
     end: string
     interval: string
-  }
+  } | null
   totals: {
     kwh: number
-  }
+    bill: number
+  } | null
+  settings: {
+    rate_per_kwh: number
+    monthly_limit_kwh: number
+  } | null
+  projection: {
+    projected_kwh: number
+    projected_bill: number
+  } | null
   series: DashboardSeriesItem[]
-  latest_meter_reading: MeterReading
+  latest_meter_reading: any
 }
 
-const defaultHourlyData = [
-  { time: "00:00", value: 20 },
-  { time: "06:00", value: 55 },
-  { time: "12:00", value: 85 },
-  { time: "18:00", value: 110 },
-  { time: "24:00", value: 45 },
+interface AlertItem {
+  alert_id: string
+  alert_type: string
+  message: string
+  triggered_at: string
+  is_read: boolean
+}
+
+const defaultChartData = [
+  { time: "00:00", value: 0 },
+  { time: "06:00", value: 0 },
+  { time: "12:00", value: 0 },
+  { time: "18:00", value: 0 },
+  { time: "24:00", value: 0 },
 ]
 
 function formatCurrency(value: number) {
@@ -86,45 +95,60 @@ function formatCurrency(value: number) {
 function getUserDisplayName(user: UserDashboardOverview["user"] | undefined): string {
   if (!user) return "Resident"
   if (user.full_name) return user.full_name
-  // Extract name from email (before @)
   const emailName = user.email?.split("@")[0]?.replace(/[._-]/g, " ") || "Resident"
   return emailName.charAt(0).toUpperCase() + emailName.slice(1)
 }
 
+const alertTypeLabel: Record<string, string> = {
+  usage_warning: "Usage Spike Detected",
+  limit_exceeded: "Limit Threshold Reached",
+  anomaly: "Unusual Activity",
+}
+
 export default function UserDashboardPage() {
   const [overview, setOverview] = useState<UserDashboardOverview | null>(null)
-  const [chartData, setChartData] = useState(defaultHourlyData)
+  const [alerts, setAlerts] = useState<AlertItem[]>([])
+  const [chartData, setChartData] = useState(defaultChartData)
   const [loading, setLoading] = useState(true)  
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const email = getEmail()
-    if (!email) {
+    const storedEmail = getEmail()
+    if (!storedEmail) {
       setError("User email tidak ditemukan. Silakan login kembali.")
       setLoading(false)
       return
     }
-
-    const dashboardEmail = email
+    const userEmail: string = storedEmail
 
     async function loadDashboard() {
       try {
-        const res = await apiFetch(`/dashboard/user/overview?email=${encodeURIComponent(dashboardEmail)}`)
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => null)
+        const [overviewRes, alertsRes] = await Promise.all([
+          apiFetch(`/dashboard/user/overview?email=${encodeURIComponent(userEmail)}`),
+          apiFetch(`/alerts/?limit=2`),
+        ])
+
+        if (!overviewRes.ok) {
+          const errorData = await overviewRes.json().catch(() => null)
           throw new Error(errorData?.detail || "Failed to load dashboard data")
         }
 
-        const data: UserDashboardOverview = await res.json()
+        const data: UserDashboardOverview = await overviewRes.json()
         setOverview(data)
+
         setChartData(
           data.series.length > 0
             ? data.series.map((item) => ({
-                time: new Date(item.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                time: new Date(item.ts).toLocaleDateString("id-ID", { weekday: "short", day: "numeric" }),
                 value: item.kwh,
               }))
-            : defaultHourlyData,
+            : defaultChartData,
         )
+
+        if (alertsRes.ok) {
+          const alertsJson = await alertsRes.json()
+          setAlerts(alertsJson.data || [])
+        }
       } catch (err: any) {
         setError(err?.message || "Unable to load dashboard")
       } finally {
@@ -135,24 +159,58 @@ export default function UserDashboardPage() {
     loadDashboard()
   }, [])
 
-  const usageKwh = overview?.totals.kwh ?? 0
+  const usageKwh = overview?.totals?.kwh ?? 0
+  const usageBill = overview?.totals?.bill ?? 0
+  const monthlyLimit = overview?.settings?.monthly_limit_kwh ?? 500
+  const ratePerKwh = overview?.settings?.rate_per_kwh ?? 0
+
   const billValue = useMemo(() => {
-    if (!overview) return "Rp 512.4K"
-    const ratePerKwh = 500
-    return formatCurrency(Math.round(usageKwh * ratePerKwh))
-  }, [overview, usageKwh])
+    if (usageBill > 0) return formatCurrency(Math.round(usageBill))
+    // fallback jika bill = 0 (belum ada data)
+    if (ratePerKwh > 0) return formatCurrency(Math.round(usageKwh * ratePerKwh))
+    return "Rp 0"
+  }, [usageBill, usageKwh, ratePerKwh])
 
   const daysRemaining = useMemo(() => {
-    if (!overview) return 12
-    const endDate = new Date(overview.range.end)
-    const diff = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    // 1. Ambil waktu hari ini (real-time dari laptop/HP user)
+    const today = new Date()
+    
+    // 2. Cari tanggal terakhir di bulan ini (misal: 31 Mei, 30 Juni, dsb)
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    
+    // 3. Hitung selisih hari antara hari ini dengan hari terakhir bulan ini
+    const diff = Math.ceil((lastDayOfMonth.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    
     return diff > 0 ? diff : 0
-  }, [overview])
+  }, [])
 
   const usagePercent = useMemo(() => {
-    if (!overview) return 72
-    return Math.min(100, Math.round((usageKwh / 500) * 100))
-  }, [overview, usageKwh])
+    if (monthlyLimit <= 0) return 0
+    return Math.min(100, Math.round((usageKwh / monthlyLimit) * 100))
+  }, [usageKwh, monthlyLimit])
+
+  // --- PERBAIKAN LOGIKA PROYEKSI AKHIR BULAN ---
+  const today = new Date()
+  const daysPassed = today.getDate() || 1 // Menghindari pembagian dengan 0
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()
+
+  const projectedKwh = useMemo(() => {
+    const backendProjected = overview?.projection?.projected_kwh ?? 0
+    // Jika data dari backend ngawur (lebih kecil dari pemakaian saat ini), kita hitung secara rasional!
+    if (backendProjected < usageKwh && usageKwh > 0) {
+      return (usageKwh / daysPassed) * daysInMonth
+    }
+    return backendProjected
+  }, [overview, usageKwh, daysPassed, daysInMonth])
+
+  const projectedBill = useMemo(() => {
+    // Kalikan hasil proyeksi kWh terbaru dengan rate harga
+    if (ratePerKwh > 0) {
+      return projectedKwh * ratePerKwh
+    }
+    return overview?.projection?.projected_bill ?? 0
+  }, [projectedKwh, ratePerKwh, overview])
+  // ----------------------------------------------
 
   if (loading) {
     return (
@@ -176,7 +234,7 @@ export default function UserDashboardPage() {
           Welcome back, {getUserDisplayName(overview?.user)}
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          {overview?.room.room_id 
+          {overview?.room?.room_id 
             ? `Energy consumption overview for room ${overview.room.room_id}.` 
             : "Here is your energy consumption overview for this billing cycle."}
         </p>
@@ -197,9 +255,6 @@ export default function UserDashboardPage() {
               <span className="text-3xl font-bold text-slate-900">{usageKwh.toFixed(1)}</span>
               <span className="text-sm font-medium text-slate-500">kWh</span>
             </div>
-            <p className="text-xs text-blue-600 font-medium flex items-center mt-2">
-              <TrendingUp className="h-3 w-3 mr-1" /> +4% <span className="text-slate-500 font-normal ml-1">from last month</span>
-            </p>
           </CardContent>
         </Card>
 
@@ -214,7 +269,7 @@ export default function UserDashboardPage() {
               <span className="text-3xl font-bold text-slate-900">{billValue}</span>
             </div>
             <p className="text-xs text-slate-500 mt-2">
-              Based on current usage rate
+              {ratePerKwh > 0 ? `Based on Rp ${ratePerKwh.toLocaleString("id-ID")}/kWh rate` : "Based on current usage rate"}
             </p>
           </CardContent>
         </Card>
@@ -242,39 +297,47 @@ export default function UserDashboardPage() {
         {/* Area Chart (Takes 2 columns) */}
         <Card className="md:col-span-2 bg-white shadow-sm border-slate-200">
           <CardHeader className="flex flex-row items-center justify-between pb-4">
-            <CardTitle className="text-sm font-semibold">Hourly Consumption Today</CardTitle>
+            <CardTitle className="text-sm font-semibold">
+              {overview?.range?.interval === "hour" ? "Hourly Consumption Today" : "Daily Consumption"}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-[220px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    labelStyle={{ display: 'none' }}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="value" 
-                    stroke="#2563eb" 
-                    strokeWidth={3} 
-                    fillOpacity={1} 
-                    fill="url(#colorValue)" 
-                  />
-                  <XAxis 
-                    dataKey="time" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fontSize: 10, fill: '#94a3b8' }} 
-                    dy={10}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              {chartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      labelStyle={{ display: 'none' }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="value" 
+                      stroke="#2563eb" 
+                      strokeWidth={3} 
+                      fillOpacity={1} 
+                      fill="url(#colorValue)" 
+                    />
+                    <XAxis 
+                      dataKey="time" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fill: '#94a3b8' }} 
+                      dy={10}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-slate-400">
+                  No consumption data available
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -291,7 +354,7 @@ export default function UserDashboardPage() {
                   <Pie
                     data={[
                       { name: "Used", value: usagePercent, fill: "#f59e0b" },
-                      { name: "Remaining", value: 100 - usagePercent, fill: "#f1f5f9" },
+                      { name: "Remaining", value: Math.max(100 - usagePercent, 0), fill: "#f1f5f9" },
                     ]}
                     cx="50%"
                     cy="50%"
@@ -304,7 +367,7 @@ export default function UserDashboardPage() {
                   >
                     {[
                       { name: "Used", value: usagePercent, fill: "#f59e0b" },
-                      { name: "Remaining", value: 100 - usagePercent, fill: "#f1f5f9" },
+                      { name: "Remaining", value: Math.max(100 - usagePercent, 0), fill: "#f1f5f9" },
                     ].map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
@@ -313,8 +376,8 @@ export default function UserDashboardPage() {
               </ResponsiveContainer>
               {/* Inner Text */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-3xl font-bold text-slate-900">72%</span>
-                <span className="text-[10px] font-medium text-slate-500">of 500 kWh</span>
+                <span className="text-3xl font-bold text-slate-900">{usagePercent}%</span>
+                <span className="text-[10px] font-medium text-slate-500">of {monthlyLimit} kWh</span>
               </div>
             </div>
             
@@ -349,15 +412,17 @@ export default function UserDashboardPage() {
           <CardContent className="pt-4 space-y-4">
             <div className="flex justify-between items-center text-sm">
               <span className="text-slate-600">Estimated Final Usage</span>
-              <span className="font-semibold text-slate-900">485.2 <span className="text-[10px] text-slate-500 font-normal">kWh</span></span>
+              <span className="font-semibold text-slate-900">{projectedKwh.toFixed(1)} <span className="text-[10px] text-slate-500 font-normal">kWh</span></span>
             </div>
             <div className="flex justify-between items-center text-sm">
               <span className="text-slate-600">Estimated Final Cost</span>
-              <span className="font-semibold text-slate-900">Rp 720,500</span>
+              <span className="font-semibold text-slate-900">{formatCurrency(Math.round(projectedBill))}</span>
             </div>
             <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 mt-4">
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Projection indicates you will stay within your historical average. No immediate action required.
+                {projectedKwh > monthlyLimit
+                  ? "Projection indicates you may exceed your monthly limit. Consider reducing usage."
+                  : "Projection indicates you will stay within your monthly limit. No immediate action required."}
               </p>
             </div>
           </CardContent>
@@ -398,26 +463,32 @@ export default function UserDashboardPage() {
               <AlertTriangle className="w-4 h-4 text-slate-700 mr-2" />
               <CardTitle className="text-sm font-semibold">Recent Alerts</CardTitle>
             </div>
-            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+            {alerts.length > 0 && (
+              <div className="w-2 h-2 rounded-full bg-red-500"></div>
+            )}
           </CardHeader>
           <CardContent className="pt-4 space-y-3 flex-1 flex flex-col">
-            {/* Alert 1 */}
-            <div className="border border-red-100 bg-red-50/50 rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
-                <h4 className="text-xs font-semibold text-slate-900">Unusual Spike Detected</h4>
+            {alerts.length > 0 ? (
+              alerts.slice(0, 2).map((alert) => (
+                <div key={alert.alert_id} className={`border rounded-lg p-3 ${!alert.is_read ? "border-red-100 bg-red-50/50" : ""}`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    {!alert.is_read ? (
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                    ) : (
+                      <Info className="w-3.5 h-3.5 text-blue-600" />
+                    )}
+                    <h4 className="text-xs font-semibold text-slate-900">
+                      {alertTypeLabel[alert.alert_type] || alert.alert_type}
+                    </h4>
+                  </div>
+                  <p className="text-[10px] text-slate-500 pl-5.5">{alert.message}</p>
+                </div>
+              ))
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-xs text-slate-400">
+                No recent alerts
               </div>
-              <p className="text-[10px] text-slate-500 pl-5.5">Yesterday at 14:00, usage spiked by 40%.</p>
-            </div>
-
-            {/* Alert 2 */}
-            <div className="border rounded-lg p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <Info className="w-3.5 h-3.5 text-blue-600" />
-                <h4 className="text-xs font-semibold text-slate-900">Bill Generated</h4>
-              </div>
-              <p className="text-[10px] text-slate-500 pl-5.5">Your previous month invoice is ready.</p>
-            </div>
+            )}
 
             <div className="mt-auto pt-2">
               <Link 
