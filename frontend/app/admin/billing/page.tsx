@@ -42,6 +42,10 @@ const formatIDR = (value: number) => {
   }).format(value).replace('Rp', 'Rp ')
 }
 
+const getErrorMessage = (err: unknown, fallback: string) => {
+  return err instanceof Error ? err.message : fallback
+}
+
 // Helper: Generate 6 bulan terakhir dengan format YYYY-MM
 const generateMonthOptions = () => {
   const options = []
@@ -64,6 +68,7 @@ export default function BillingPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [generatingReport, setGeneratingReport] = useState(false)
 
   // FILTER STATE
   const [searchTerm, setSearchTerm] = useState("")
@@ -95,14 +100,15 @@ export default function BillingPage() {
       // Jika backend mengirim dalam format { data: [...] }
       const invoiceList = data.data || data || []
       setInvoices(invoiceList)
-    } catch (err: any) {
-      setError(err.message)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Gagal memuat data tagihan"))
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchBillingData()
   }, [selectedPeriod])
 
@@ -170,8 +176,8 @@ export default function BillingPage() {
       alert(`Payment ${status === "paid" ? "approved" : "rejected"} for Room ${selectedInvoice.room_no}`)
       setShowPreviewModal(false)
       fetchBillingData() // Refresh data setelah update sukses
-    } catch (err: any) {
-      alert(err.message || "Terjadi kesalahan")
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Terjadi kesalahan"))
     } finally {
       setPaymentAction(null)
     }
@@ -182,6 +188,51 @@ export default function BillingPage() {
     setSortBy("none")
     setFilterStatus("all")
     setIsFilterOpen(false)
+  }
+
+  const handleGenerateMonthlyReport = async () => {
+    setGeneratingReport(true)
+    setError(null)
+    try {
+      const generateRes = await apiFetch("/billing/generate", {
+        method: "POST",
+        body: JSON.stringify({ period: selectedPeriod }),
+      })
+      if (!generateRes.ok) {
+        const data = await generateRes.json().catch(() => null)
+        throw new Error(data?.detail || "Gagal generate billing")
+      }
+
+      await fetchBillingData()
+
+      const params = new URLSearchParams({
+        period: selectedPeriod,
+        status: filterStatus,
+        search: searchTerm,
+        sort_by: sortBy,
+      })
+      const pdfRes = await apiFetch(`/reports/admin-billing.pdf?${params.toString()}`, {
+        headers: { Accept: "application/pdf" },
+      })
+      if (!pdfRes.ok) {
+        const data = await pdfRes.json().catch(() => null)
+        throw new Error(data?.detail || "Gagal membuat PDF laporan")
+      }
+
+      const blob = await pdfRes.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ampera-monthly-billing-${selectedPeriod}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Gagal generate monthly report"))
+    } finally {
+      setGeneratingReport(false)
+    }
   }
 
   const selectedMonthLabel = monthOptions.find(m => m.value === selectedPeriod)?.label || selectedPeriod
@@ -233,9 +284,13 @@ export default function BillingPage() {
             Export CSV
           </Button>
 
-          <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm">
+          <Button
+            className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm"
+            onClick={handleGenerateMonthlyReport}
+            disabled={generatingReport}
+          >
             <FileText className="mr-2 h-4 w-4" />
-            Generate Monthly Report
+            {generatingReport ? "Generating..." : "Generate Monthly Report"}
           </Button>
         </div>
       </div>

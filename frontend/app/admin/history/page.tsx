@@ -32,6 +32,10 @@ interface AdminDashboardOverview {
   series: Array<{ ts: string; kwh: number }>
 }
 
+const getErrorMessage = (err: unknown, fallback: string) => {
+  return err instanceof Error ? err.message : fallback
+}
+
 
 export default function EnergyMonitoringPage() {
   // STATE MANAGEMENT
@@ -41,6 +45,7 @@ export default function EnergyMonitoringPage() {
   const [overview, setOverview] = useState<AdminDashboardOverview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [exportingPdf, setExportingPdf] = useState(false)
   
   const [sortBy, setSortBy] = useState<"date" | "consumption" | "peakDemand" | null>(null)
   const [filterStatus, setFilterStatus] = useState<"all" | "normal" | "warning">("all")
@@ -60,8 +65,8 @@ export default function EnergyMonitoringPage() {
 
         const overviewData: AdminDashboardOverview = await res.json()
         setOverview(overviewData)
-      } catch (err: any) {
-        setError(err?.message || 'Terjadi kesalahan saat memuat data history energi')
+      } catch (err: unknown) {
+        setError(getErrorMessage(err, 'Terjadi kesalahan saat memuat data history energi'))
       } finally {
         setLoading(false)
       }
@@ -279,6 +284,45 @@ export default function EnergyMonitoringPage() {
     setIsDateFilterOpen(false)
   }
 
+  const handleExportPdf = async () => {
+    setExportingPdf(true)
+    setError(null)
+    try {
+      const params = new URLSearchParams({
+        view_mode: viewMode,
+        date_range: dateRange,
+        selected_month: selectedMonthYear,
+        status: filterStatus,
+        sort_by: sortBy ?? "date",
+      })
+
+      if (overview?.range?.start) params.set("start", overview.range.start)
+      if (overview?.range?.end) params.set("end", overview.range.end)
+
+      const res = await apiFetch(`/reports/admin-energy.pdf?${params.toString()}`, {
+        headers: { Accept: "application/pdf" },
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.detail || "Gagal export PDF")
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `ampera-energy-monitoring-${viewMode}-${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Gagal export PDF"))
+    } finally {
+      setExportingPdf(false)
+    }
+  }
+
   const availableMonths = useMemo(() => {
   if (!overview) return []
   const months = new Set<string>()
@@ -427,9 +471,13 @@ export default function EnergyMonitoringPage() {
   })}
 </select>
           {/* Export Button */}
-          <Button className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm">
+          <Button
+            className="bg-blue-700 hover:bg-blue-800 text-white h-9 text-sm"
+            onClick={handleExportPdf}
+            disabled={exportingPdf}
+          >
             <Download className="mr-2 h-4 w-4" />
-            Export PDF
+            {exportingPdf ? "Exporting..." : "Export PDF"}
           </Button>
         </div>
       </div>
