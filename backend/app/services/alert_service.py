@@ -1,13 +1,26 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import AlertHistory, AlertType
 
 
-def create_alert(db: Session, room_id: str, alert_type: AlertType, message: str) -> AlertHistory:
-    alert = AlertHistory(room_id=room_id, alert_type=alert_type, message=message)
+def create_alert(
+    db: Session,
+    room_id: str,
+    alert_type: AlertType,
+    message: str,
+    triggered_at: datetime | None = None,
+) -> AlertHistory:
+    alert = AlertHistory(
+        room_id=room_id,
+        alert_type=alert_type,
+        message=message,
+        triggered_at=triggered_at or datetime.now(timezone.utc),
+    )
     db.add(alert)
     db.commit()
     db.refresh(alert)
