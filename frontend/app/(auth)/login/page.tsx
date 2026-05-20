@@ -169,10 +169,10 @@ export default function LoginPage() {
                   {loading ? "Signing in..." : "Sign In →"}
                 </Button>
 
-                <p className="text-xs text-slate-500">
-                  Dev credentials:{" "}
-                  <code>boss@admin.com / admin</code> or{" "}
-                  <code>user@x.com / user</code>
+                <p className="text-xs text-black">
+                  Coba Login pake akun dibawah ini untuk uji coba:{" "}
+                  <code>admin@ampera.com / admin</code> or{" "}
+                  <code>budi.santoso@ampera.com / user</code>
                 </p>
               </div>
             </form>
