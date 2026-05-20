@@ -259,33 +259,44 @@ def _parse_iso_timestamp(value: str) -> str | None:
 
 def _extract_notification_targets(message: str, history: list[dict[str, str]]) -> list[dict[str, str | None]]:
     """Extract room targets and, when present, the source timestamp for each target."""
-    combined_text = f"{message}\n{_history_text(history)}"
-    lines = [line.strip() for line in combined_text.splitlines() if line.strip()]
+    current_text = message.strip()
+    current_lines = [line.strip() for line in current_text.splitlines() if line.strip()]
+    history_text = _history_text(history)
+    history_lines = [line.strip() for line in history_text.splitlines() if line.strip()]
+
     targets: list[dict[str, str | None]] = []
     seen: set[str] = set()
 
-    for line in lines:
-        room_ids = _extract_room_ids(line)
-        if not room_ids:
-            continue
-        triggered_at = None
-        match = re.search(
-            r"\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)\b",
-            line,
-        )
-        if match:
-            triggered_at = _parse_iso_timestamp(match.group(1))
-
-        for room_id in room_ids:
-            if room_id in seen:
+    def _collect(lines: list[str]) -> None:
+        for line in lines:
+            room_ids = _extract_room_ids(line)
+            if not room_ids:
                 continue
-            seen.add(room_id)
-            targets.append({"room_id": room_id, "triggered_at": triggered_at})
+            triggered_at = None
+            match = re.search(
+                r"\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)?)\b",
+                line,
+            )
+            if match:
+                triggered_at = _parse_iso_timestamp(match.group(1))
 
+            for room_id in room_ids:
+                if room_id in seen:
+                    continue
+                seen.add(room_id)
+                targets.append({"room_id": room_id, "triggered_at": triggered_at})
+
+    _collect(current_lines)
+    if targets:
+        return targets
+
+    # If the confirmation message itself does not include room ids, fall back to history.
+    _collect(history_lines)
     if targets:
         return targets
 
     # Fallback for very short confirmation replies: use the full combined text.
+    combined_text = f"{current_text}\n{history_text}"
     for room_id in _extract_room_ids(combined_text):
         if room_id in seen:
             continue
@@ -328,6 +339,17 @@ def _send_confirmed_notifications(
     message: str,
 ) -> str:
     from app.agent.tools.send_notification import send_notification
+    from app.db.database import SessionLocal
+    from app.db.models import Room
+
+    db = SessionLocal()
+    try:
+        valid_room_ids = {
+            row[0]
+            for row in db.query(Room.room_id).filter(Room.room_id.in_([str(t["room_id"]) for t in targets])).all()
+        }
+    finally:
+        db.close()
 
     sent_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
@@ -340,6 +362,10 @@ def _send_confirmed_notifications(
     for target in targets:
         rid = str(target["room_id"])
         triggered_at = target.get("triggered_at")
+        if rid not in valid_room_ids:
+            logger.warning("[CHAT][TOOLS] skip invalid room_id=%s", rid)
+            lines.append(f"| {rid} | - | {alert_type} | {sent_at} | ❌ room tidak ditemukan |")
+            continue
         if message.startswith("Peringatan pemakaian listrik untuk kamar "):
             room_message = _extract_notification_message("", [], rid)
         else:
