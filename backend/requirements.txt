@@ -9,3 +9,4 @@ pandas==2.2.3
 langchain==0.3.14
 langchain-groq==0.2.4
 python-multipart>=0.0.9
+reportlab==4.2.5
