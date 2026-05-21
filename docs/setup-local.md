@@ -132,3 +132,33 @@ npm run dev
 ```
 
 Frontend akan berjalan di `http://localhost:3000` dan backend di `http://127.0.0.1:8000`.
+
+---
+
+## Akun Demo
+
+Dua akun tersedia setelah proses seed selesai:
+
+| Role | Email | Password |
+|---|---|---|
+| Admin (Pengelola) | `admin@ampera.com` | `admin` |
+| User (Penghuni) | `rizky.pratama@ampera.com` | `user` |
+
+---
+
+## Catatan untuk Deployment (Render + Neon + Vercel)
+
+Jika kamu mengakses versi yang sudah di-deploy (bukan lokal), perhatikan hal berikut:
+
+### Cold Start Render (Free Tier)
+
+Backend di-host di **Render free tier** yang akan tidur otomatis saat tidak ada request masuk dalam beberapa waktu. Ketika pertama kali dibuka atau setelah lama tidak dipakai, server perlu waktu **1–2 menit** untuk bangun kembali.
+
+**Cara mengatasinya:**
+
+1. Buka halaman login.
+2. Masukkan kredensial lalu klik **Sign In**.
+3. Jika login gagal atau loading sangat lama (lebih dari 15 detik), tunggu sebentar.
+4. Setelah 1–2 menit, coba login kembali — server sudah aktif dan login akan berhasil.
+
+Informasi ini juga sudah ditampilkan langsung di halaman login aplikasi.

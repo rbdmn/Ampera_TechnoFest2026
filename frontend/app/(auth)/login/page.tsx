@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Mail, Lock } from "lucide-react"
+import { Mail, Lock, AlertTriangle, Info } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,9 +49,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50">
+    <div className="flex h-screen w-full bg-slate-50 overflow-hidden">
       {/* Sisi Kiri - Gambar / Branding (Sembunyi di mobile) */}
-      <div className="hidden lg:block relative w-1/2 h-screen overflow-hidden bg-slate-900">
+      <div className="hidden lg:block relative w-1/2 h-full overflow-hidden bg-slate-900">
         {/* Background */}
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -74,10 +74,10 @@ export default function LoginPage() {
       </div>
 
       {/* Sisi Kanan - Form Login */}
-      <div className="flex w-full flex-col items-center justify-center lg:w-1/2 p-8">
-        <div className="mx-auto flex w-full max-w-[400px] flex-col justify-center space-y-6">
+      <div className="flex w-full flex-col items-center justify-center lg:w-1/2 h-full overflow-y-auto py-6 px-8">
+        <div className="mx-auto flex w-full max-w-[400px] flex-col justify-center space-y-3">
           {/* Header & Logo */}
-          <div className="mb-4 flex items-center justify-center space-x-2 text-blue-700 font-bold text-xl">
+          <div className="flex items-center justify-center space-x-2 text-blue-700 font-bold text-xl">
             <Image
               src="/Logo_text.svg"
               alt="Ampera AI Logo"
@@ -156,6 +156,18 @@ export default function LoginPage() {
                   </Link>
                 </div>
 
+                {/* Cold start notice */}
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 flex gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mt-0.5 shrink-0" />
+                  <div className="text-xs text-amber-800">
+                    <span className="font-semibold">Render cold start: </span>
+                    server tidur saat tidak aktif dan butuh{" "}
+                    <span className="font-medium">1–2 menit</span> untuk bangun.
+                    Jika login gagal, tunggu lalu{" "}
+                    <span className="font-medium">coba sekali lagi</span>.
+                  </div>
+                </div>
+
                 {error ? (
                   <p className="text-sm text-red-600">{error}</p>
                 ) : null}
@@ -169,19 +181,29 @@ export default function LoginPage() {
                   {loading ? "Signing in..." : "Sign In →"}
                 </Button>
 
-                <p className="text-xs text-black">
-                  Coba Login pake akun dibawah ini untuk uji coba:{" "}
-                  <code>admin@ampera.com / admin</code> or{" "}
-                  <code>budi.santoso@ampera.com / user</code>
-                </p>
+                {/* Demo credentials */}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 flex gap-2">
+                  <Info className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
+                  <div className="text-xs text-slate-600 space-y-1.5 w-full">
+                    <p className="font-semibold text-slate-700">Akun demo</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500 shrink-0">Admin</span>
+                      <span className="font-mono bg-white border border-slate-200 rounded px-2 py-0.5 text-slate-700 text-[11px]">
+                        admin@ampera.com / admin
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-500 shrink-0">User</span>
+                      <span className="font-mono bg-white border border-slate-200 rounded px-2 py-0.5 text-slate-700 text-[11px]">
+                        rizky.pratama@ampera.com / user
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </form>
           </div>
 
-          {/* Footer */}
-          <p className="px-8 text-center text-xs text-slate-500">
-            ⓘ Accounts are provisioned by system administrators.
-          </p>
         </div>
       </div>
     </div>
